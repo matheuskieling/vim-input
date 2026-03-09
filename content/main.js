@@ -27,11 +27,9 @@
   // the follow-up keypress / beforeinput / keyup events.
   var _blocked = false;
 
-  // Flag: true while handling Escape from INSERT mode.
-  // Suppresses focusout/focusin so the browser's native Escape blur
-  // (or site scripts like Google/GitHub that blur on Escape) doesn't
-  // destroy the vim session.
-  var _suppressFocusEvents = false;
+  // Tracks user actions that intentionally move focus away (mouse click,
+  // Ctrl+L, etc.) so we can distinguish them from Chrome swallowing Escape.
+  var _recentFocusSteal = 0;
 
   // ── Init ────────────────────────────────────────────
 
@@ -175,7 +173,7 @@
 
           var mode = items.startMode === 'NORMAL' ? Mode.NORMAL : Mode.INSERT;
           activeElement = el;
-          el.setAttribute('data-input-vim', '');
+          el.setAttribute('data-input-vim', mode);
           engine.setMode(mode);
           engine.parser.reset();
           overlay.show(mode, el);
@@ -185,7 +183,7 @@
     } else {
       // Fallback (no chrome API, e.g. local test)
       activeElement = el;
-      el.setAttribute('data-input-vim', '');
+      el.setAttribute('data-input-vim', startMode);
       engine.setMode(startMode);
       engine.parser.reset();
       overlay.show(startMode, el);
@@ -194,17 +192,42 @@
   }
 
   document.addEventListener('focusin', function (e) {
-    if (_suppressFocusEvents) return;
     var el = e.target;
+    // If it's the same element we're already managing, don't re-activate
+    // (this would reset mode back to INSERT after a re-focus).
+    if (el === activeElement) return;
     if (!isVimTarget(el)) return;
     activateElement(el);
   }, true);
 
+  document.addEventListener('mousedown', function () {
+    _recentFocusSteal = Date.now();
+  }, true);
+
   document.addEventListener('focusout', function (e) {
-    if (_suppressFocusEvents) return;
-    if (e.target === activeElement) {
-      deactivate();
+    if (e.target !== activeElement) return;
+
+    // Chrome's native autocomplete UI (Google, GitHub) swallows the Escape
+    // keydown before JS sees it, then blurs the input.  Detect this:
+    // if we're in INSERT mode and the user didn't click or use a modifier
+    // shortcut (Ctrl+L, etc.), treat the blur as an Escape press.
+    if (engine.mode === Mode.INSERT && Date.now() - _recentFocusSteal > 300) {
+      var el = activeElement;
+      var handler = getHandler(el);
+      if (handler) {
+        var command = engine.handleKey('Escape');
+        if (command) handler.execute(el, command, engine);
+        updateCursor();
+      }
+      setTimeout(function () {
+        if (el && document.activeElement !== el) {
+          el.focus();
+        }
+      }, 0);
+      return;
     }
+
+    deactivate();
   }, true);
 
   // ── Mode change callback ────────────────────────────
@@ -212,6 +235,9 @@
   engine.onModeChange(function (newMode) {
     overlay.update(newMode);
     updateCursor();
+    if (activeElement) {
+      activeElement.setAttribute('data-input-vim', newMode);
+    }
   });
 
   // ── Block helper: kill an event unconditionally ─────
@@ -308,7 +334,12 @@
     }
 
     // Ignore modifier combos (Ctrl+C, Cmd+V, etc.)
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Also mark as intentional focus-steal so focusout doesn't
+    // mistake Ctrl+L / Cmd+T for a swallowed Escape.
+    if (e.ctrlKey || e.metaKey || e.altKey) {
+      _recentFocusSteal = Date.now();
+      return;
+    }
 
     var key = e.key;
 
@@ -338,16 +369,6 @@
         }
       }
       if (key !== 'Escape') return;
-
-      // Guard against browser/site blurring the input on Escape
-      _suppressFocusEvents = true;
-      var escapingEl = activeElement;
-      setTimeout(function () {
-        if (escapingEl && document.activeElement !== escapingEl) {
-          escapingEl.focus();
-        }
-        _suppressFocusEvents = false;
-      }, 0);
     }
 
     // We are handling this key — block it completely
