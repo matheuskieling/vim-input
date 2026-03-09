@@ -595,12 +595,14 @@
 
   ContentEditableHandler.prototype._doVisualEnter = function (el, pos, engine) {
     engine.visualAnchor = pos;
+    engine.visualHead = pos;
     setSelectionRange(el, pos, pos + 1);
   };
 
   ContentEditableHandler.prototype._doVisualLineEnter = function (el, pos, engine) {
     var text = getFlatText(el);
     engine.visualAnchor = pos;
+    engine.visualHead = pos;
     var info = getLineInfo(text, pos);
     setSelectionRange(el, info.lineStart, info.lineEnd);
   };
@@ -608,27 +610,19 @@
   ContentEditableHandler.prototype.extendVisualSelection = function (el, command, engine) {
     var text = getFlatText(el);
     var anchor = engine.visualAnchor;
+    var isVertical = command.motion === MotionType.LINE_UP || command.motion === MotionType.LINE_DOWN;
 
-    // Derive the logical head (the char the cursor is "on")
-    var selStart = flatOffsetFromSelection(el);
-    var selEnd = selStart;
-    var sel = window.getSelection();
-    if (sel.rangeCount) {
-      var r = sel.getRangeAt(0);
-      var preRange = document.createRange();
-      preRange.selectNodeContents(el);
-      preRange.setEnd(r.endContainer, r.endOffset);
-      selEnd = preRange.toString().length;
-    }
-
-    var head;
-    if (selStart < anchor) {
-      head = selStart;
+    if (isVertical) {
+      if (this._desiredCol < 0) {
+        var headInfo = getLineInfo(text, engine.visualHead);
+        this._desiredCol = headInfo.col;
+      }
     } else {
-      head = selEnd - 1;
+      this._desiredCol = -1;
     }
 
-    var newPos = resolveMotion(text, head, command.motion, command.count, false, -1, command.char);
+    var newPos = resolveMotion(text, engine.visualHead, command.motion, command.count, false, this._desiredCol, command.char);
+    engine.visualHead = newPos;
     var isLinewise = engine.mode === 'VISUAL_LINE';
 
     if (isLinewise) {
@@ -776,15 +770,15 @@
     } else if (command.fromMode === 'NORMAL') {
       el.blur();
     } else if (command.fromMode === 'VISUAL' || command.fromMode === 'VISUAL_LINE') {
-      setCursorAt(el, pos);
+      setCursorAt(el, command.visualHead != null ? command.visualHead : pos);
     }
   };
 
   // ── Cursor rect (for overlay block cursor) ──────────
 
-  ContentEditableHandler.prototype.getCursorRect = function (el) {
+  ContentEditableHandler.prototype.getCursorRect = function (el, overridePos) {
     var text = getFlatText(el);
-    var pos = flatOffsetFromSelection(el);
+    var pos = overridePos != null ? overridePos : flatOffsetFromSelection(el);
 
     // Try to measure the character at cursor position
     if (pos < text.length) {
