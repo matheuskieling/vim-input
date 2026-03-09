@@ -937,56 +937,95 @@
 
   // ── Cursor rect (for overlay block cursor) ──────────
 
-  var _mirror = null;
-  var MIRROR_PROPS = [
-    'direction', 'boxSizing', 'width',
-    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
-    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
-    'fontStyle', 'fontVariant', 'fontWeight', 'fontStretch', 'fontSize',
-    'lineHeight', 'fontFamily',
-    'textAlign', 'textTransform', 'textIndent', 'textDecoration',
-    'letterSpacing', 'wordSpacing'
-  ];
-
-  function ensureMirror() {
-    if (_mirror && _mirror.parentNode) return _mirror;
-    _mirror = document.createElement('div');
-    _mirror.style.cssText = 'position:fixed;visibility:hidden;top:-9999px;left:-9999px;overflow:hidden;';
-    document.body.appendChild(_mirror);
-    return _mirror;
+  var _measureCanvas = null;
+  function getMeasureCtx() {
+    if (!_measureCanvas) _measureCanvas = document.createElement('canvas');
+    return _measureCanvas.getContext('2d');
   }
 
   function getCaretCoordinates(el, position) {
-    var mirror = ensureMirror();
-    var s = mirror.style;
     var computed = window.getComputedStyle(el);
     var isInput = el.tagName === 'INPUT';
 
-    for (var i = 0; i < MIRROR_PROPS.length; i++) {
-      s[MIRROR_PROPS[i]] = computed[MIRROR_PROPS[i]];
+    var paddingLeft = parseFloat(computed.paddingLeft) || 0;
+    var paddingRight = parseFloat(computed.paddingRight) || 0;
+    var paddingTop = parseFloat(computed.paddingTop) || 0;
+    var borderLeft = parseFloat(computed.borderLeftWidth) || 0;
+    var borderTop = parseFloat(computed.borderTopWidth) || 0;
+    var fontSize = parseFloat(computed.fontSize) || 16;
+    var lineHeight = parseFloat(computed.lineHeight);
+    if (isNaN(lineHeight)) lineHeight = Math.ceil(fontSize * 1.2);
+
+    var ctx = getMeasureCtx();
+    ctx.font = computed.font ||
+      (computed.fontStyle + ' ' + computed.fontVariant + ' ' +
+       computed.fontWeight + ' ' + computed.fontSize + ' ' + computed.fontFamily);
+    if (ctx.letterSpacing !== undefined) ctx.letterSpacing = computed.letterSpacing || '0px';
+    if (ctx.wordSpacing !== undefined) ctx.wordSpacing = computed.wordSpacing || '0px';
+
+    var text = el.value;
+    var offsetX = paddingLeft + borderLeft;
+    var offsetY = paddingTop + borderTop;
+
+    // Single-line inputs don't wrap
+    if (isInput) {
+      var ix = ctx.measureText(text.substring(0, position)).width;
+      var iw = position < text.length ? ctx.measureText(text[position]).width : fontSize * 0.6;
+      return { top: offsetY, left: ix + offsetX, width: iw, height: lineHeight };
     }
-    s.height = 'auto';
-    s.overflow = 'hidden';
-    s.whiteSpace = isInput ? 'nowrap' : 'pre-wrap';
-    s.wordWrap = isInput ? 'normal' : 'break-word';
-    if (isInput) s.width = 'auto';
 
-    mirror.textContent = el.value.substring(0, position);
-    var span = document.createElement('span');
-    var ch = position < el.value.length ? el.value[position] : null;
-    // Use a non-breaking space for measurement if char is newline or at end
-    span.textContent = (ch && ch !== '\n') ? ch : '\u00a0';
-    mirror.appendChild(span);
+    // Textarea: simulate wrapping using canvas text measurement
+    var contentWidth = el.clientWidth - paddingLeft - paddingRight;
+    var row = 0;
+    var lineStart = 0;
+    var i = 0;
 
-    var result = {
-      top: span.offsetTop,
-      left: span.offsetLeft,
-      width: span.offsetWidth,
-      height: span.offsetHeight
-    };
+    while (i <= text.length) {
+      if (i === text.length || text[i] === '\n') {
+        // Hard break or end of text — position is on this visual line
+        if (position >= lineStart && position <= i) {
+          var x = ctx.measureText(text.substring(lineStart, position)).width;
+          var w = (position < text.length && text[position] !== '\n')
+            ? ctx.measureText(text[position]).width : fontSize * 0.6;
+          return { top: row * lineHeight + offsetY, left: x + offsetX, width: w, height: lineHeight };
+        }
+        row++;
+        lineStart = i + 1;
+        i++;
+        continue;
+      }
 
-    mirror.textContent = '';
-    return result;
+      // Check if adding character i overflows the visual line
+      var lineWidth = ctx.measureText(text.substring(lineStart, i + 1)).width;
+
+      if (lineWidth > contentWidth && i > lineStart && text[i] !== ' ' && text[i] !== '\t') {
+        // Non-whitespace overflow — find last space to wrap at
+        var wrapAt = i; // default: character-level break
+        for (var j = i - 1; j > lineStart; j--) {
+          if (text[j] === ' ' || text[j] === '\t') {
+            wrapAt = j + 1;
+            break;
+          }
+        }
+
+        // Check if position falls on the line we just completed
+        if (position >= lineStart && position < wrapAt) {
+          var x2 = ctx.measureText(text.substring(lineStart, position)).width;
+          var w2 = ctx.measureText(text[position]).width;
+          return { top: row * lineHeight + offsetY, left: x2 + offsetX, width: w2, height: lineHeight };
+        }
+
+        row++;
+        lineStart = wrapAt;
+        i = wrapAt; // re-check from new visual line start
+        continue;
+      }
+
+      i++;
+    }
+
+    // Fallback
+    return { top: offsetY, left: offsetX, width: fontSize * 0.6, height: lineHeight };
   }
 
   InputHandler.prototype.getCursorRect = function (el, overridePos) {
