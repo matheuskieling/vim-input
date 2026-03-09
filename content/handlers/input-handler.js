@@ -667,7 +667,8 @@
         break;
 
       case InsertEntry.A_LOWER:
-        setCursor(el, Math.min(pos + 1, text.length));
+        // Move one right, but never past the end of the current line
+        setCursor(el, Math.min(pos + 1, info.lineEnd));
         break;
 
       case InsertEntry.I_UPPER:
