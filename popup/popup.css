@@ -9,7 +9,7 @@ body {
   font-size: 14px;
   color: #e0e0e0;
   background: #1e1e2e;
-  width: 320px;
+  width: 420px;
 }
 
 .container {
@@ -66,9 +66,20 @@ select:focus {
   margin-top: 16px;
 }
 
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.section-header label {
+  font-weight: 600;
+  color: #cdd6f4;
+}
+
 .section label {
   display: block;
-  margin-bottom: 8px;
   font-weight: 600;
   color: #cdd6f4;
 }
@@ -108,9 +119,25 @@ select:focus {
   cursor: default;
 }
 
+.btn-small {
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #89b4fa;
+  background: none;
+  border: 1px solid #45475a;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-small:hover {
+  background: #313244;
+}
+
 #exclude-list {
   list-style: none;
-  max-height: 180px;
+  max-height: 220px;
   overflow-y: auto;
 }
 
@@ -133,13 +160,15 @@ select:focus {
   color: #f38ba8;
   font-size: 16px;
   cursor: pointer;
-  padding: 0 4px;
+  padding: 2px 6px;
   line-height: 1;
   flex-shrink: 0;
+  border-radius: 3px;
 }
 
 #exclude-list li .remove-btn:hover {
   color: #eba0ac;
+  background: rgba(243, 139, 168, 0.1);
 }
 
 #exclude-list li .pattern-text {
@@ -147,6 +176,45 @@ select:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
   margin-right: 8px;
+}
+
+#exclude-textarea {
+  width: 100%;
+  min-height: 140px;
+  padding: 8px 10px;
+  font-family: monospace;
+  font-size: 12px;
+  background: #313244;
+  color: #cdd6f4;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+#exclude-textarea:focus {
+  outline: none;
+  border-color: #89b4fa;
+}
+
+#exclude-textarea-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+#exclude-textarea-actions .btn-secondary {
+  flex: 1;
+}
+
+.btn-save {
+  background: #89b4fa;
+  color: #1e1e2e;
+  border-color: #89b4fa;
+}
+
+.btn-save:hover {
+  background: #74c7ec;
 }
 
 .hint {
@@ -162,4 +230,8 @@ select:focus {
   font-size: 12px;
   color: #a6e3a1;
   min-height: 16px;
+}
+
+.hidden {
+  display: none !important;
 }

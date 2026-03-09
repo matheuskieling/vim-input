@@ -5,11 +5,20 @@
   var startModeSelect = document.getElementById('start-mode');
   var matchBracketsToggle = document.getElementById('match-brackets');
   var tabSizeSelect = document.getElementById('tab-size');
+  var useClipboardToggle = document.getElementById('use-clipboard');
+  var highlightYankToggle = document.getElementById('highlight-yank');
   var excludeBtn = document.getElementById('exclude-btn');
   var currentUrlText = document.getElementById('current-url-text');
   var excludeList = document.getElementById('exclude-list');
   var noExcludes = document.getElementById('no-excludes');
   var statusEl = document.getElementById('status');
+
+  var listView = document.getElementById('list-view');
+  var bulkView = document.getElementById('bulk-view');
+  var bulkEditBtn = document.getElementById('bulk-edit-btn');
+  var bulkCancelBtn = document.getElementById('bulk-cancel-btn');
+  var bulkSaveBtn = document.getElementById('bulk-save-btn');
+  var excludeTextarea = document.getElementById('exclude-textarea');
 
   var currentPattern = '';
   var excludePatterns = [];
@@ -37,12 +46,14 @@
   // ── Load settings ───────────────────────────────────
 
   chrome.storage.sync.get(
-    { enabled: true, startMode: 'INSERT', excludePatterns: [], matchBrackets: false, tabSize: 4 },
+    { enabled: true, startMode: 'INSERT', excludePatterns: [], matchBrackets: false, tabSize: 4, useClipboard: false, highlightYank: false },
     function (items) {
       enabledToggle.checked = items.enabled;
       startModeSelect.value = items.startMode || 'INSERT';
       matchBracketsToggle.checked = items.matchBrackets || false;
       tabSizeSelect.value = String(items.tabSize || 4);
+      useClipboardToggle.checked = items.useClipboard || false;
+      highlightYankToggle.checked = items.highlightYank || false;
       excludePatterns = items.excludePatterns || [];
       renderExcludeList();
       updateExcludeBtn();
@@ -55,6 +66,8 @@
   startModeSelect.addEventListener('change', saveSettings);
   matchBracketsToggle.addEventListener('change', saveSettings);
   tabSizeSelect.addEventListener('change', saveSettings);
+  useClipboardToggle.addEventListener('change', saveSettings);
+  highlightYankToggle.addEventListener('change', saveSettings);
 
   // ── Exclude current site ────────────────────────────
 
@@ -91,7 +104,7 @@
 
         var btn = document.createElement('button');
         btn.className = 'remove-btn';
-        btn.textContent = '\u00d7'; // ×
+        btn.textContent = '\u00d7'; // x
         btn.title = 'Remove';
         btn.addEventListener('click', function () {
           excludePatterns.splice(idx, 1);
@@ -117,6 +130,37 @@
     }
   }
 
+  // ── Bulk edit ────────────────────────────────────────
+
+  bulkEditBtn.addEventListener('click', function () {
+    excludeTextarea.value = excludePatterns.join('\n');
+    listView.classList.add('hidden');
+    bulkView.classList.remove('hidden');
+    bulkEditBtn.classList.add('hidden');
+    excludeTextarea.focus();
+  });
+
+  bulkCancelBtn.addEventListener('click', function () {
+    bulkView.classList.add('hidden');
+    listView.classList.remove('hidden');
+    bulkEditBtn.classList.remove('hidden');
+  });
+
+  bulkSaveBtn.addEventListener('click', function () {
+    var lines = excludeTextarea.value.split('\n');
+    excludePatterns = [];
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (line) excludePatterns.push(line);
+    }
+    saveSettings();
+    renderExcludeList();
+    updateExcludeBtn();
+    bulkView.classList.add('hidden');
+    listView.classList.remove('hidden');
+    bulkEditBtn.classList.remove('hidden');
+  });
+
   // ── Save ────────────────────────────────────────────
 
   function saveSettings() {
@@ -125,6 +169,8 @@
       startMode: startModeSelect.value,
       matchBrackets: matchBracketsToggle.checked,
       tabSize: parseInt(tabSizeSelect.value, 10) || 4,
+      useClipboard: useClipboardToggle.checked,
+      highlightYank: highlightYankToggle.checked,
       excludePatterns: excludePatterns,
     }, function () {
       statusEl.textContent = 'Saved!';

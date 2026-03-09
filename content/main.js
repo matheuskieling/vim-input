@@ -3,10 +3,12 @@
 
   var Mode = window.InputVim.Mode;
   var CommandType = window.InputVim.CommandType;
+  var OperatorType = window.InputVim.OperatorType;
   var VimEngine = window.InputVim.VimEngine;
   var InputHandler = window.InputVim.InputHandler;
   var ContentEditableHandler = window.InputVim.ContentEditableHandler;
   var Overlay = window.InputVim.Overlay;
+  var Register = window.InputVim.Register;
 
   var engine = new VimEngine();
   var inputHandler = new InputHandler();
@@ -19,6 +21,7 @@
   var excludePatterns = [];
   var matchBrackets = false;
   var tabSize = 4;
+  var highlightYank = false;
 
   var BRACKET_PAIRS = { '(': ')', '{': '}', '[': ']' };
   var CLOSING_BRACKETS = { ')': '(', '}': '{', ']': '[' };
@@ -60,13 +63,15 @@
   function loadSettings() {
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
       chrome.storage.sync.get(
-        { enabled: true, startMode: 'INSERT', excludePatterns: [], matchBrackets: false, tabSize: 4 },
+        { enabled: true, startMode: 'INSERT', excludePatterns: [], matchBrackets: false, tabSize: 4, useClipboard: false, highlightYank: false },
         function (items) {
           enabled = items.enabled;
           startMode = items.startMode === 'NORMAL' ? Mode.NORMAL : Mode.INSERT;
           excludePatterns = items.excludePatterns || [];
           matchBrackets = items.matchBrackets || false;
           tabSize = items.tabSize || 4;
+          highlightYank = items.highlightYank || false;
+          Register.setUseClipboard(items.useClipboard || false);
           if (!enabled || isPageExcluded()) {
             deactivate();
           }
@@ -165,12 +170,14 @@
   function activateElement(el) {
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
       chrome.storage.sync.get(
-        { enabled: true, startMode: 'INSERT', excludePatterns: [], matchBrackets: false, tabSize: 4 },
+        { enabled: true, startMode: 'INSERT', excludePatterns: [], matchBrackets: false, tabSize: 4, useClipboard: false, highlightYank: false },
         function (items) {
           enabled = items.enabled;
           excludePatterns = items.excludePatterns || [];
           matchBrackets = items.matchBrackets || false;
           tabSize = items.tabSize || 4;
+          highlightYank = items.highlightYank || false;
+          Register.setUseClipboard(items.useClipboard || false);
           if (!enabled || isPageExcluded()) return;
 
           var mode = items.startMode === 'NORMAL' ? Mode.NORMAL : Mode.INSERT;
@@ -335,6 +342,13 @@
       return;
     }
 
+    // Block paste (Ctrl+V / Cmd+V) outside insert mode
+    if ((e.ctrlKey || e.metaKey) && e.key === 'v' && engine.mode !== Mode.INSERT) {
+      _blocked = true;
+      killEvent(e);
+      return;
+    }
+
     // Ignore modifier combos (Ctrl+C, Cmd+V, etc.)
     // Also mark as intentional focus-steal so focusout doesn't
     // mistake Ctrl+L / Cmd+T for a swallowed Escape.
@@ -396,8 +410,27 @@
       return;
     }
 
+    // For paste commands, sync from clipboard first (async)
+    if (command.type === CommandType.PASTE || command.type === CommandType.PASTE_BEFORE) {
+      var pasteEl = activeElement;
+      var pasteHandler = handler;
+      Register.syncFromClipboard(function () {
+        pasteHandler.execute(pasteEl, command, engine);
+        updateCursor();
+      });
+      return;
+    }
+
     handler.execute(activeElement, command, engine);
     updateCursor();
+
+    // Flash yank highlight after cursor is updated
+    if (highlightYank && command.operator === OperatorType.YANK) {
+      var flashEl = activeElement;
+      handler.flashYank(flashEl, function () {
+        updateCursor();
+      });
+    }
   }, true);
 
   // ── Kill follow-up events that the browser may still generate ──
