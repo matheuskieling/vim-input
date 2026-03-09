@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Input Vim",
+  "version": "0.1.0",
+  "description": "Vim motions for every text input in the browser",
+  "permissions": ["storage", "activeTab", "tabs"],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/page-escape-blocker.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "content/command-types.js",
+        "content/register.js",
+        "content/key-parser.js",
+        "content/vim-engine.js",
+        "content/overlay.js",
+        "content/handlers/input-handler.js",
+        "content/handlers/contenteditable-handler.js",
+        "content/main.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ]
+}

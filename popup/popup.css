@@ -1,0 +1,165 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  color: #e0e0e0;
+  background: #1e1e2e;
+  width: 320px;
+}
+
+.container {
+  padding: 16px;
+}
+
+h1 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: #cdd6f4;
+  font-family: monospace;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #313244;
+  border-radius: 6px;
+}
+
+.toggle-row label {
+  font-weight: 600;
+  color: #cdd6f4;
+}
+
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #89b4fa;
+  cursor: pointer;
+}
+
+select {
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: monospace;
+  background: #45475a;
+  color: #cdd6f4;
+  border: 1px solid #585b70;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+select:focus {
+  outline: none;
+  border-color: #89b4fa;
+}
+
+.section {
+  margin-top: 16px;
+}
+
+.section label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #cdd6f4;
+}
+
+#exclude-current {
+  margin-bottom: 12px;
+}
+
+.exclude-url {
+  font-family: monospace;
+  font-size: 11px;
+  color: #6c7086;
+  margin-bottom: 6px;
+  word-break: break-all;
+}
+
+.btn-secondary {
+  width: 100%;
+  padding: 7px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #cdd6f4;
+  background: #45475a;
+  border: 1px solid #585b70;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-secondary:hover {
+  background: #585b70;
+}
+
+.btn-secondary.excluded {
+  color: #a6e3a1;
+  border-color: #a6e3a1;
+  cursor: default;
+}
+
+#exclude-list {
+  list-style: none;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+#exclude-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  background: #313244;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+  color: #bac2de;
+}
+
+#exclude-list li .remove-btn {
+  background: none;
+  border: none;
+  color: #f38ba8;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+#exclude-list li .remove-btn:hover {
+  color: #eba0ac;
+}
+
+#exclude-list li .pattern-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+.hint {
+  font-size: 12px;
+  color: #6c7086;
+  text-align: center;
+  padding: 8px 0;
+}
+
+.status {
+  margin-top: 8px;
+  text-align: center;
+  font-size: 12px;
+  color: #a6e3a1;
+  min-height: 16px;
+}
