@@ -209,9 +209,9 @@
 
     // Chrome's native autocomplete UI (Google, GitHub) swallows the Escape
     // keydown before JS sees it, then blurs the input.  Detect this:
-    // if we're in INSERT mode and the user didn't click or use a modifier
-    // shortcut (Ctrl+L, etc.), treat the blur as an Escape press.
-    if (engine.mode === Mode.INSERT && Date.now() - _recentFocusSteal > 300) {
+    // if we're in any non-NORMAL mode and the user didn't click or use a
+    // modifier shortcut (Ctrl+L, etc.), treat the blur as an Escape press.
+    if (engine.mode !== Mode.NORMAL && Date.now() - _recentFocusSteal > 300) {
       var el = activeElement;
       var handler = getHandler(el);
       if (handler) {
