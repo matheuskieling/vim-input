@@ -1,22 +1,24 @@
 (function () {
   'use strict';
 
-  // This script runs in the page's MAIN world (not the extension's isolated world).
-  // Content-script stopImmediatePropagation() does NOT cross world boundaries,
-  // so site scripts (Google, GitHub, etc.) still see the Escape keydown and blur
-  // the input.  This script runs in the same world as those site scripts, so
-  // stopImmediatePropagation() here actually prevents them from firing.
+  // Runs in the page's MAIN world.
   //
-  // Communication with the content script: the content script sets
-  // data-input-vim on the focused element while vim mode is active.
+  // Two protections against site scripts that blur inputs on Escape:
+  //
+  // 1. Override blur() — when vim is active in a non-NORMAL mode,
+  //    programmatic blur() calls from site JS are silently ignored.
+  //    (The content script's isolated world keeps the native blur().)
+  //
+  // 2. Override focus() on other elements — prevent site JS from
+  //    stealing focus away from a vim-managed input.
 
-  window.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape') return;
+  var origBlur = HTMLElement.prototype.blur;
 
-    var el = document.activeElement;
-    if (!el || !el.hasAttribute('data-input-vim')) return;
-
-    e.stopImmediatePropagation();
-    e.preventDefault();
-  }, true); // capture phase — runs before any page script listener
+  HTMLElement.prototype.blur = function () {
+    var mode = this.getAttribute('data-input-vim');
+    if (mode && mode !== 'NORMAL') {
+      return;
+    }
+    return origBlur.apply(this, arguments);
+  };
 })();

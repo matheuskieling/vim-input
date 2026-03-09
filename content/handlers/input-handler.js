@@ -706,7 +706,9 @@
     var pos = el.selectionStart;
     engine.visualAnchor = pos;
     var info = getLineInfo(el.value, pos);
-    setSelection(el, info.lineStart, info.lineEnd);
+    var end = info.lineEnd;
+    if (end < el.value.length) end++;
+    setSelection(el, info.lineStart, end);
   };
 
   InputHandler.prototype.extendVisualSelection = function (el, command, engine) {
@@ -727,13 +729,17 @@
     var newPos = resolveMotion(el, command.motion, command.count, false, -1, command.char);
 
     if (isLinewise) {
-      // Expand selection to full lines
+      // Expand selection to full lines (include trailing \n so empty lines are covered)
       var anchorLine = getLineInfo(text, anchor);
       var headLine = getLineInfo(text, newPos);
       if (newPos >= anchor) {
-        setSelection(el, anchorLine.lineStart, headLine.lineEnd);
+        var end = headLine.lineEnd;
+        if (end < text.length) end++;
+        setSelection(el, anchorLine.lineStart, end);
       } else {
-        setSelection(el, headLine.lineStart, anchorLine.lineEnd);
+        var end2 = anchorLine.lineEnd;
+        if (end2 < text.length) end2++;
+        setSelection(el, headLine.lineStart, end2);
       }
     } else {
       if (newPos >= anchor) {
