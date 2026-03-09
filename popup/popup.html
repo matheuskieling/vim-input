@@ -37,14 +37,41 @@
       </select>
     </div>
 
+    <div class="toggle-row">
+      <label for="use-clipboard">System clipboard</label>
+      <input type="checkbox" id="use-clipboard">
+    </div>
+
+    <div class="toggle-row">
+      <label for="highlight-yank">Highlight yank</label>
+      <input type="checkbox" id="highlight-yank">
+    </div>
+
     <div class="section">
-      <label>Excluded sites</label>
+      <div class="section-header">
+        <label>Excluded sites</label>
+        <button id="bulk-edit-btn" class="btn-small">Edit as text</button>
+      </div>
+
       <div id="exclude-current">
         <div class="exclude-url" id="current-url-text"></div>
         <button id="exclude-btn" class="btn-secondary">Exclude this site</button>
       </div>
-      <ul id="exclude-list"></ul>
-      <div id="no-excludes" class="hint">No sites excluded</div>
+
+      <!-- List view -->
+      <div id="list-view">
+        <ul id="exclude-list"></ul>
+        <div id="no-excludes" class="hint">No sites excluded</div>
+      </div>
+
+      <!-- Bulk edit view -->
+      <div id="bulk-view" class="hidden">
+        <textarea id="exclude-textarea" placeholder="One pattern per line, e.g.&#10;*://github.com/*&#10;*://mail.google.com/*"></textarea>
+        <div id="exclude-textarea-actions">
+          <button id="bulk-cancel-btn" class="btn-secondary">Cancel</button>
+          <button id="bulk-save-btn" class="btn-secondary btn-save">Save</button>
+        </div>
+      </div>
     </div>
 
     <div id="status" class="status"></div>

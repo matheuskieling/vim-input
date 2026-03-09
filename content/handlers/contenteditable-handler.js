@@ -389,6 +389,8 @@
   function ContentEditableHandler() {
     this._undoMap = new WeakMap();
     this._desiredCol = -1;
+    this._lastYankFrom = null;
+    this._lastYankTo = null;
   }
 
   ContentEditableHandler.prototype._getUndo = function (el) {
@@ -499,6 +501,8 @@
 
     if (command.operator === OperatorType.YANK) {
       Register.set(deleted, regType);
+      this._lastYankFrom = range.from;
+      this._lastYankTo = range.to;
       return;
     }
 
@@ -519,6 +523,8 @@
 
     if (command.operator === OperatorType.YANK) {
       Register.set(deleted, 'char');
+      this._lastYankFrom = range.from;
+      this._lastYankTo = range.to;
       return;
     }
 
@@ -546,6 +552,8 @@
 
     if (command.operator === OperatorType.YANK) {
       Register.set(deleted, 'line');
+      this._lastYankFrom = startOffset;
+      this._lastYankTo = endOffset;
       return;
     }
 
@@ -564,6 +572,8 @@
   };
 
   ContentEditableHandler.prototype._doInsertEnter = function (el, text, pos, command) {
+    this._saveUndo(el);
+
     var info = getLineInfo(text, pos);
     switch (command.entry) {
       case InsertEntry.I_LOWER:
@@ -579,13 +589,11 @@
         setCursorAt(el, info.lineEnd);
         break;
       case InsertEntry.O_LOWER:
-        this._saveUndo(el);
         el.textContent = text.substring(0, info.lineEnd) + '\n' + text.substring(info.lineEnd);
         setCursorAt(el, info.lineEnd + 1);
         fireInputEvent(el);
         break;
       case InsertEntry.O_UPPER:
-        this._saveUndo(el);
         el.textContent = text.substring(0, info.lineStart) + '\n' + text.substring(info.lineStart);
         setCursorAt(el, info.lineStart);
         fireInputEvent(el);
@@ -661,6 +669,12 @@
       Register.set(selected, regType);
       var text = getFlatText(el);
       var pos = flatOffsetFromSelection(el);
+      // Store yank range before moving cursor
+      var preRange = document.createRange();
+      preRange.selectNodeContents(el);
+      preRange.setEnd(sel.getRangeAt(0).startContainer, sel.getRangeAt(0).startOffset);
+      this._lastYankFrom = preRange.toString().length;
+      this._lastYankTo = this._lastYankFrom + selected.length;
       setCursorAt(el, pos);
       return;
     }
@@ -693,7 +707,8 @@
         setCursorAt(el, info.lineEnd + 1);
       }
     } else {
-      var insertPos = before ? pos : pos + 1;
+      var cInfo = getLineInfo(text, pos);
+      var insertPos = before ? pos : Math.min(pos + 1, cInfo.lineEnd);
       insertPos = clamp(insertPos, 0, text.length);
       var newText3 = text.substring(0, insertPos) + reg.content + text.substring(insertPos);
       el.textContent = newText3;
@@ -815,6 +830,29 @@
     var pt = parseInt(cs.paddingTop) || 0;
     var pl = parseInt(cs.paddingLeft) || 0;
     return { x: elRect.left + bl + pl, y: elRect.top + bt + pt, width: fs * 0.6, height: fs * 1.2 };
+  };
+
+  // ── Yank highlight ─────────────────────────────────
+
+  ContentEditableHandler.prototype.flashYank = function (el, onDone) {
+    var from = this._lastYankFrom;
+    var to = this._lastYankTo;
+    this._lastYankFrom = null;
+    this._lastYankTo = null;
+    if (from == null || to == null || from === to) { if (onDone) onDone(); return; }
+    var sel = window.getSelection();
+    if (!sel.rangeCount) { if (onDone) onDone(); return; }
+    var savedRange = sel.getRangeAt(0).cloneRange();
+    try {
+      setSelectionRange(el, from, to);
+    } catch (e) { if (onDone) onDone(); return; }
+    setTimeout(function () {
+      try {
+        sel.removeAllRanges();
+        sel.addRange(savedRange);
+      } catch (e) {}
+      if (onDone) onDone();
+    }, 200);
   };
 
   function fireInputEvent(el) {

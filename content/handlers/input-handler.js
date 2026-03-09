@@ -442,6 +442,8 @@
   function InputHandler() {
     this._undoMap = new WeakMap();
     this._desiredCol = -1; // sticky column for j/k
+    this._lastYankFrom = null;
+    this._lastYankTo = null;
   }
 
   InputHandler.prototype._getUndo = function (el) {
@@ -573,6 +575,8 @@
 
     if (command.operator === OperatorType.YANK) {
       Register.set(deleted, regType);
+      this._lastYankFrom = range.from;
+      this._lastYankTo = range.to;
       return;
     }
 
@@ -596,6 +600,8 @@
 
     if (command.operator === OperatorType.YANK) {
       Register.set(deleted, 'char');
+      this._lastYankFrom = range.from;
+      this._lastYankTo = range.to;
       return;
     }
 
@@ -628,6 +634,8 @@
 
     if (command.operator === OperatorType.YANK) {
       Register.set(deleted, 'line');
+      this._lastYankFrom = startOffset;
+      this._lastYankTo = endOffset;
       return;
     }
 
@@ -657,6 +665,8 @@
   // ── Insert Entry ────────────────────────────────────
 
   InputHandler.prototype._doInsertEnter = function (el, command) {
+    this._saveUndo(el);
+
     var text = el.value;
     var pos = el.selectionStart;
     var info = getLineInfo(text, pos);
@@ -681,14 +691,12 @@
         break;
 
       case InsertEntry.O_LOWER:
-        this._saveUndo(el);
         el.value = text.substring(0, info.lineEnd) + '\n' + text.substring(info.lineEnd);
         setCursor(el, info.lineEnd + 1);
         fireInputEvent(el);
         break;
 
       case InsertEntry.O_UPPER:
-        this._saveUndo(el);
         el.value = text.substring(0, info.lineStart) + '\n' + text.substring(info.lineStart);
         setCursor(el, info.lineStart);
         fireInputEvent(el);
@@ -784,6 +792,8 @@
 
     if (command.operator === OperatorType.YANK) {
       Register.set(selected, regType);
+      this._lastYankFrom = start;
+      this._lastYankTo = end;
       setCursor(el, start);
       return;
     }
@@ -823,7 +833,8 @@
         setCursor(el, insertAt2 + 1);
       }
     } else {
-      var insertPos = before ? pos : pos + 1;
+      var cInfo = getLineInfo(text, pos);
+      var insertPos = before ? pos : Math.min(pos + 1, cInfo.lineEnd);
       insertPos = clamp(insertPos, 0, text.length);
       el.value = text.substring(0, insertPos) + reg.content + text.substring(insertPos);
       setCursor(el, insertPos + reg.content.length - 1);
@@ -995,6 +1006,30 @@
     }
 
     return { x: x, y: y, width: coords.width, height: coords.height };
+  };
+
+  // ── Yank highlight ─────────────────────────────────
+
+  InputHandler.prototype.flashYank = function (el, onDone) {
+    var from = this._lastYankFrom;
+    var to = this._lastYankTo;
+    this._lastYankFrom = null;
+    this._lastYankTo = null;
+    if (from == null || to == null || from === to) { if (onDone) onDone(); return; }
+    var savedStart, savedEnd;
+    try {
+      savedStart = el.selectionStart;
+      savedEnd = el.selectionEnd;
+      el.selectionStart = from;
+      el.selectionEnd = to;
+    } catch (e) { if (onDone) onDone(); return; }
+    setTimeout(function () {
+      try {
+        el.selectionStart = savedStart;
+        el.selectionEnd = savedEnd;
+      } catch (e) {}
+      if (onDone) onDone();
+    }, 200);
   };
 
   // ── Expose ──────────────────────────────────────────
