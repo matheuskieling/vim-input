@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Input Vim</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Input Vim</h1>
+
+    <div class="toggle-row">
+      <label for="enabled-toggle">Enabled</label>
+      <input type="checkbox" id="enabled-toggle" checked>
+    </div>
+
+    <div class="toggle-row">
+      <label for="start-mode">Start in</label>
+      <select id="start-mode">
+        <option value="INSERT">Insert mode</option>
+        <option value="NORMAL">Normal mode</option>
+      </select>
+    </div>
+
+    <div class="toggle-row">
+      <label for="match-brackets">Match brackets</label>
+      <input type="checkbox" id="match-brackets">
+    </div>
+
+    <div class="toggle-row">
+      <label for="tab-size">Tab spaces</label>
+      <select id="tab-size">
+        <option value="2">2</option>
+        <option value="4">4</option>
+        <option value="8">8</option>
+      </select>
+    </div>
+
+    <div class="section">
+      <label>Excluded sites</label>
+      <div id="exclude-current">
+        <div class="exclude-url" id="current-url-text"></div>
+        <button id="exclude-btn" class="btn-secondary">Exclude this site</button>
+      </div>
+      <ul id="exclude-list"></ul>
+      <div id="no-excludes" class="hint">No sites excluded</div>
+    </div>
+
+    <div id="status" class="status"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
