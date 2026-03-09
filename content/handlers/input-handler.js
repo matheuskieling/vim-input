@@ -700,12 +700,14 @@
 
   InputHandler.prototype._doVisualEnter = function (el, engine) {
     engine.visualAnchor = el.selectionStart;
+    engine.visualHead = el.selectionStart;
     setSelection(el, el.selectionStart, el.selectionStart + 1);
   };
 
   InputHandler.prototype._doVisualLineEnter = function (el, engine) {
     var pos = el.selectionStart;
     engine.visualAnchor = pos;
+    engine.visualHead = pos;
     var info = getLineInfo(el.value, pos);
     var end = info.lineEnd;
     if (end < el.value.length) end++;
@@ -716,18 +718,21 @@
     var anchor = engine.visualAnchor;
     var text = el.value;
     var isLinewise = engine.mode === 'VISUAL_LINE';
+    var isVertical = command.motion === MotionType.LINE_UP || command.motion === MotionType.LINE_DOWN;
 
-    // Derive the logical head
-    var head;
-    if (el.selectionStart < anchor) {
-      head = el.selectionStart;
+    if (isVertical) {
+      if (this._desiredCol < 0) {
+        var headInfo = getLineInfo(text, engine.visualHead);
+        this._desiredCol = headInfo.col;
+      }
     } else {
-      head = el.selectionEnd - 1;
+      this._desiredCol = -1;
     }
 
-    setCursor(el, head);
+    setCursor(el, engine.visualHead);
 
-    var newPos = resolveMotion(el, command.motion, command.count, false, -1, command.char);
+    var newPos = resolveMotion(el, command.motion, command.count, false, this._desiredCol, command.char);
+    engine.visualHead = newPos;
 
     if (isLinewise) {
       // Expand selection to full lines (include trailing \n so empty lines are covered)
@@ -915,7 +920,7 @@
     } else if (command.fromMode === 'NORMAL') {
       el.blur();
     } else if (command.fromMode === 'VISUAL' || command.fromMode === 'VISUAL_LINE') {
-      setCursor(el, el.selectionStart);
+      setCursor(el, command.visualHead != null ? command.visualHead : el.selectionStart);
     }
   };
 
@@ -973,9 +978,9 @@
     return result;
   }
 
-  InputHandler.prototype.getCursorRect = function (el) {
+  InputHandler.prototype.getCursorRect = function (el, overridePos) {
     var pos;
-    try { pos = el.selectionStart; } catch (e) { return null; }
+    try { pos = overridePos != null ? overridePos : el.selectionStart; } catch (e) { return null; }
 
     var coords = getCaretCoordinates(el, pos);
     var elRect = el.getBoundingClientRect();

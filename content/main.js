@@ -103,9 +103,11 @@
     if (!activeElement) return;
     var handler = getHandler(activeElement);
     if (!handler) return;
-    if (engine.mode === Mode.NORMAL) {
+    if (engine.mode !== Mode.INSERT) {
       activeElement.style.caretColor = 'transparent';
-      var rect = handler.getCursorRect(activeElement);
+      var visualPos = (engine.mode === Mode.VISUAL || engine.mode === Mode.VISUAL_LINE)
+        ? engine.visualHead : undefined;
+      var rect = handler.getCursorRect(activeElement, visualPos);
       if (rect) {
         overlay.showCursor(rect.x, rect.y, rect.width, rect.height);
       } else {
@@ -383,12 +385,14 @@
     // Handle visual mode motion (extend selection)
     if ((engine.mode === Mode.VISUAL || engine.mode === Mode.VISUAL_LINE) && command.type === CommandType.MOTION) {
       handler.extendVisualSelection(activeElement, command, engine);
+      updateCursor();
       return;
     }
 
     // Handle text object in visual mode (select the range)
     if ((engine.mode === Mode.VISUAL || engine.mode === Mode.VISUAL_LINE) && command.type === CommandType.TEXT_OBJECT) {
       handler.selectTextObject(activeElement, command, engine);
+      updateCursor();
       return;
     }
 

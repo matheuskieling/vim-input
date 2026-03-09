@@ -10,6 +10,7 @@
     this.mode = Mode.NORMAL;
     this.parser = new KeyParser();
     this.visualAnchor = 0;
+    this.visualHead = 0;
     this._onModeChange = null;
   }
 
@@ -40,8 +41,9 @@
       if (key === 'Escape') {
         this.parser.reset();
         var fromMode = this.mode;
+        var head = this.visualHead;
         this.setMode(Mode.NORMAL);
-        return { type: CommandType.ESCAPE, fromMode: fromMode };
+        return { type: CommandType.ESCAPE, fromMode: fromMode, visualHead: head };
       }
 
       // Switch between visual modes
@@ -58,13 +60,15 @@
       // Same key exits visual
       if (key === 'v' && this.mode === Mode.VISUAL) {
         this.parser.reset();
+        var head2 = this.visualHead;
         this.setMode(Mode.NORMAL);
-        return { type: CommandType.ESCAPE, fromMode: Mode.VISUAL };
+        return { type: CommandType.ESCAPE, fromMode: Mode.VISUAL, visualHead: head2 };
       }
       if (key === 'V' && this.mode === Mode.VISUAL_LINE) {
         this.parser.reset();
+        var head3 = this.visualHead;
         this.setMode(Mode.NORMAL);
-        return { type: CommandType.ESCAPE, fromMode: Mode.VISUAL_LINE };
+        return { type: CommandType.ESCAPE, fromMode: Mode.VISUAL_LINE, visualHead: head3 };
       }
 
       // Operators act on selection
