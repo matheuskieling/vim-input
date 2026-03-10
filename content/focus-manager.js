@@ -17,7 +17,7 @@
     _updateCursor = updateCursor;
 
     document.addEventListener('focusin', function (e) {
-      var el = e.target;
+      var el = e.composedPath ? e.composedPath()[0] : e.target;
       if (el === _activeElement) return;
       var ED = window.InputVim.ElementDetector;
       if (!ED.isVimTarget(el)) return;
@@ -29,7 +29,8 @@
     }, true);
 
     document.addEventListener('focusout', function (e) {
-      if (e.target !== _activeElement) return;
+      var el = e.composedPath ? e.composedPath()[0] : e.target;
+      if (el !== _activeElement) return;
 
       if (_engine.mode !== Mode.NORMAL && Date.now() - _recentFocusSteal > 300) {
         var el = _activeElement;
@@ -101,6 +102,10 @@
   // Check for already-focused elements on page load
   function checkExistingFocus() {
     var el = document.activeElement;
+    // Traverse into shadow roots to find the real focused element
+    while (el && el.shadowRoot && el.shadowRoot.activeElement) {
+      el = el.shadowRoot.activeElement;
+    }
     var ED = window.InputVim.ElementDetector;
     if (el && ED.isVimTarget(el) && el !== _activeElement) {
       activate(el);

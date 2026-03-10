@@ -102,6 +102,7 @@ A small color-coded badge next to the input shows the current mode.
 | `O` | Open new line above and enter Insert |
 | `v` | Enter Visual mode (toggle) |
 | `V` | Enter Visual Line mode (toggle) |
+| `:q` | Disable vim on the current input (reactivates on refocus) |
 
 ### Motions
 
@@ -292,7 +293,7 @@ On sites where Chrome's native UI swallows the Escape key (Google Search autocom
  │  Edit          x X s    r{c}    D C Y    p P         │
  │  Undo/Redo     u    Ctrl+R                           │
  │                                                      │
- │  Mode          i a I A o O    v V    Escape          │
+ │  Mode          i a I A o O    v V    Escape    :q     │
  └─────────────────────────────────────────────────────┘
 
  INSERT MODE

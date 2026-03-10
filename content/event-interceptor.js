@@ -15,6 +15,8 @@
   var _getHandler = null;
   var _updateCursor = null;
   var _markFocusSteal = null;
+  var _cmdLineActive = false;
+  var _cmdLineText = '';
 
   function init(engine, overlay, getActiveElement, getHandler, updateCursor, markFocusSteal) {
     _engine = engine;
@@ -118,6 +120,14 @@
     return false;
   }
 
+  // ── Command-line execution ─────────────────────────
+
+  function executeCmdLine(cmd, el) {
+    if (cmd === 'q') {
+      window.InputVim.FocusManager.deactivate();
+    }
+  }
+
   // ── Keydown handler ─────────────────────────────────
 
   function handleKeydown(e) {
@@ -130,6 +140,42 @@
 
     var handler = _getHandler(el);
     if (!handler) return;
+
+    // Command-line mode key handling
+    if (_cmdLineActive) {
+      _blocked = true;
+      killEvent(e);
+      var clKey = e.key;
+      if (clKey === 'Escape') {
+        _cmdLineActive = false;
+        _cmdLineText = '';
+        _overlay.hideCmdLine();
+        return;
+      }
+      if (clKey === 'Enter') {
+        var cmd = _cmdLineText;
+        _cmdLineActive = false;
+        _cmdLineText = '';
+        _overlay.hideCmdLine();
+        executeCmdLine(cmd, el);
+        return;
+      }
+      if (clKey === 'Backspace') {
+        _cmdLineText = _cmdLineText.substring(0, _cmdLineText.length - 1);
+        if (_cmdLineText.length === 0) {
+          _cmdLineActive = false;
+          _overlay.hideCmdLine();
+        } else {
+          _overlay.showCmdLine(':' + _cmdLineText);
+        }
+        return;
+      }
+      if (clKey.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        _cmdLineText += clKey;
+        _overlay.showCmdLine(':' + _cmdLineText);
+      }
+      return;
+    }
 
     // Ctrl+R in normal mode → redo
     if (e.ctrlKey && e.key === 'r' && _engine.mode !== Mode.INSERT) {
@@ -210,6 +256,16 @@
         }
       }
       if (key !== 'Escape') return;
+    }
+
+    // ':' activates command-line mode
+    if (key === ':') {
+      _blocked = true;
+      killEvent(e);
+      _cmdLineActive = true;
+      _cmdLineText = '';
+      _overlay.showCmdLine(':');
+      return;
     }
 
     _blocked = true;

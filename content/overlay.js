@@ -59,6 +59,23 @@
       '  background: #313244;',
       '  color: #cdd6f4;',
       '}',
+      '.iv-cmdline {',
+      '  position: fixed;',
+      '  font-family: monospace;',
+      '  font-size: 11px;',
+      '  font-weight: 700;',
+      '  line-height: 1;',
+      '  padding: 2px 6px;',
+      '  border-radius: 3px;',
+      '  pointer-events: none;',
+      '  opacity: 0.85;',
+      '  z-index: 2147483647;',
+      '  display: none;',
+      '  white-space: nowrap;',
+      '  background: #313244;',
+      '  color: #cdd6f4;',
+      '  min-width: 30px;',
+      '}',
       '.iv-cursor {',
       '  position: fixed;',
       '  pointer-events: none;',
@@ -81,6 +98,10 @@
     this._cmdBox = document.createElement('div');
     this._cmdBox.className = 'iv-cmd';
     this._shadow.appendChild(this._cmdBox);
+
+    this._cmdLine = document.createElement('div');
+    this._cmdLine.className = 'iv-cmdline';
+    this._shadow.appendChild(this._cmdLine);
 
     this._cursor = document.createElement('div');
     this._cursor.className = 'iv-cursor';
@@ -115,6 +136,7 @@
     if (!this._badge) return;
     this._badge.style.display = 'none';
     this.updateCmd('');
+    this.hideCmdLine();
     this.hideCursor();
     this._currentTarget = null;
     window.removeEventListener('scroll', this._repositionBound, true);
@@ -130,6 +152,18 @@
     this._cmdBox.textContent = text;
     this._cmdBox.style.display = 'block';
     this._reposition();
+  };
+
+  Overlay.prototype.showCmdLine = function (text) {
+    if (!this._cmdLine) return;
+    this._cmdLine.textContent = text;
+    this._cmdLine.style.display = 'block';
+    this._reposition();
+  };
+
+  Overlay.prototype.hideCmdLine = function () {
+    if (!this._cmdLine) return;
+    this._cmdLine.style.display = 'none';
   };
 
   Overlay.prototype.showCursor = function (x, y, w, h) {
@@ -174,6 +208,12 @@
     if (this._cmdBox && this._cmdBox.style.display !== 'none') {
       this._cmdBox.style.top = badgeTop + 'px';
       this._cmdBox.style.left = (rect.right - this._badge.offsetWidth - this._cmdBox.offsetWidth - 4) + 'px';
+    }
+
+    // Position command line to the left of the badge
+    if (this._cmdLine && this._cmdLine.style.display !== 'none') {
+      this._cmdLine.style.top = badgeTop + 'px';
+      this._cmdLine.style.left = (rect.right - this._badge.offsetWidth - this._cmdLine.offsetWidth - 4) + 'px';
     }
   };
 
