@@ -150,16 +150,34 @@
       return cmd;
     }
 
-    // Handle pending 'g' for 'gg'
+    // Handle pending 'g' for 'gg', 'ge', 'gE'
     if (this._pendingG) {
       this._pendingG = false;
       this._clearTimeout();
+      var gCount = this._parseCount();
+      var gOp = this._operator;
       if (key === 'g') {
-        var count = this._parseCount();
         this.reset();
-        return { type: CommandType.MOTION, motion: MotionType.DOC_START, count: count };
+        if (gOp) {
+          return { type: CommandType.OPERATOR_MOTION, operator: gOp, motion: MotionType.DOC_START, count: gCount };
+        }
+        return { type: CommandType.MOTION, motion: MotionType.DOC_START, count: gCount };
       }
-      // Not 'gg', reset
+      if (key === 'e') {
+        this.reset();
+        if (gOp) {
+          return { type: CommandType.OPERATOR_MOTION, operator: gOp, motion: MotionType.WORD_END_BACK, count: gCount };
+        }
+        return { type: CommandType.MOTION, motion: MotionType.WORD_END_BACK, count: gCount };
+      }
+      if (key === 'E') {
+        this.reset();
+        if (gOp) {
+          return { type: CommandType.OPERATOR_MOTION, operator: gOp, motion: MotionType.WORD_END_BACK_BIG, count: gCount };
+        }
+        return { type: CommandType.MOTION, motion: MotionType.WORD_END_BACK_BIG, count: gCount };
+      }
+      // Not a recognized g-sequence, reset
       this.reset();
       return null;
     }

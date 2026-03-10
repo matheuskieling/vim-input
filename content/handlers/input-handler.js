@@ -203,6 +203,37 @@
     return pos; // position ON last char (vim cursor model)
   }
 
+  function wordEndBack(text, pos) {
+    if (pos <= 0) return 0;
+    // Remember our starting class to know if we crossed a boundary
+    var startCls = charClass(text[pos]);
+    pos--;
+    // Skip whitespace
+    while (pos > 0 && charClass(text[pos]) === 2) pos--;
+    if (charClass(text[pos]) === 2) return 0;
+    // If we crossed a class boundary (started on different class or whitespace), we're done
+    var nowCls = charClass(text[pos]);
+    if (nowCls !== startCls || startCls === 2) return pos;
+    // Same class — we're mid-group. Skip to start of this group, then find end of previous group
+    while (pos > 0 && charClass(text[pos - 1]) === nowCls) pos--;
+    if (pos <= 0) return 0;
+    pos--;
+    while (pos > 0 && charClass(text[pos]) === 2) pos--;
+    return pos;
+  }
+
+  function wordEndBackBig(text, pos) {
+    if (pos <= 0) return 0;
+    pos--;
+    if (!isWhitespace(text[pos])) {
+      while (pos > 0 && !isWhitespace(text[pos - 1])) pos--;
+      if (pos <= 0) return 0;
+      pos--;
+    }
+    while (pos > 0 && isWhitespace(text[pos])) pos--;
+    return pos;
+  }
+
   // ── Find/Till helpers ─────────────────────────────────
 
   function findCharForward(text, pos, ch) {
@@ -457,6 +488,14 @@
 
         case MotionType.WORD_END_BIG:
           newPos = wordEndBig(text, newPos);
+          break;
+
+        case MotionType.WORD_END_BACK:
+          newPos = wordEndBack(text, newPos);
+          break;
+
+        case MotionType.WORD_END_BACK_BIG:
+          newPos = wordEndBackBig(text, newPos);
           break;
 
         case MotionType.LINE_START: {
