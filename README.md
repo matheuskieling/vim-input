@@ -14,6 +14,10 @@
   <img src="https://img.shields.io/badge/build-none-brightgreen" alt="No build step">
 </p>
 
+<p align="center">
+  <img src="images/in-action.gif" alt="Input Vim in action" width="700">
+</p>
+
 ---
 
 ## Limitations
