@@ -30,6 +30,8 @@
     TILL_CHAR_BACK: 'till_char_back', // T{char}
     DOC_START: 'doc_start',       // gg
     DOC_END: 'doc_end',           // G
+    PARAGRAPH_FORWARD: 'paragraph_forward', // }
+    PARAGRAPH_BACK: 'paragraph_back',       // {
   });
 
   const OperatorType = Object.freeze({
@@ -47,6 +49,9 @@
     ANGLE: 'angle',
     DOUBLE_QUOTE: 'double_quote',
     SINGLE_QUOTE: 'single_quote',
+    BACKTICK: 'backtick',
+    CHAR_PAIR: 'char_pair',
+    PARAGRAPH: 'paragraph',
   });
 
   const CommandType = Object.freeze({

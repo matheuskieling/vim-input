@@ -70,21 +70,39 @@
 
   // ── Text object resolver ──────────────────────────────
 
-  function resolveTextObject(text, pos, object, modifier) {
+  function resolveTextObject(text, pos, object, modifier, charArg) {
     var around = modifier === 'around';
 
     if (object === TextObject.WORD || object === TextObject.WORD_BIG) {
       return resolveWordTextObject(text, pos, around, object === TextObject.WORD_BIG);
     }
 
-    if (object === TextObject.DOUBLE_QUOTE || object === TextObject.SINGLE_QUOTE) {
-      var q = object === TextObject.DOUBLE_QUOTE ? '"' : "'";
+    if (object === TextObject.PARAGRAPH) {
+      return resolveParagraphTextObject(text, pos, around);
+    }
+
+    // Quote-like text objects (find matching pair of same char on line)
+    var QUOTE_CHARS = {};
+    QUOTE_CHARS[TextObject.DOUBLE_QUOTE] = '"';
+    QUOTE_CHARS[TextObject.SINGLE_QUOTE] = "'";
+    QUOTE_CHARS[TextObject.BACKTICK] = '`';
+    if (QUOTE_CHARS[object]) {
+      var q = QUOTE_CHARS[object];
       var qm = findQuotePair(text, pos, q);
       if (!qm) return null;
       if (around) return { from: qm.start, to: qm.end + 1 };
       return { from: qm.start + 1, to: qm.end };
     }
 
+    // Arbitrary char pair (ci|, ci*, ci/, ci\)
+    if (object === TextObject.CHAR_PAIR && charArg) {
+      var cp = findQuotePair(text, pos, charArg);
+      if (!cp) return null;
+      if (around) return { from: cp.start, to: cp.end + 1 };
+      return { from: cp.start + 1, to: cp.end };
+    }
+
+    // Bracket-like text objects (matching open/close pairs)
     var pairs = {};
     pairs[TextObject.BRACE] = ['{', '}'];
     pairs[TextObject.PAREN] = ['(', ')'];
@@ -97,6 +115,61 @@
     if (!match) return null;
     if (around) return { from: match.start, to: match.end + 1 };
     return { from: match.start + 1, to: match.end };
+  }
+
+  function resolveParagraphTextObject(text, pos, around) {
+    if (text.length === 0) return null;
+
+    // Find paragraph boundaries (blank lines or start/end of text)
+    var from = pos, to = pos;
+
+    // A paragraph is a contiguous block of non-blank lines
+    var onBlank = /^\s*$/.test(getLineText(text, pos));
+
+    if (onBlank) {
+      // On a blank line: select the contiguous blank lines
+      while (from > 0 && /^\s*$/.test(getLineText(text, from - 1))) from = lineStart(text, from - 1);
+      from = lineStart(text, from);
+      while (to < text.length && /^\s*$/.test(getLineText(text, to))) to = lineEndExcl(text, to);
+    } else {
+      // On a non-blank line: select the contiguous non-blank lines
+      while (from > 0 && !/^\s*$/.test(getLineText(text, from - 1))) from = lineStart(text, from - 1);
+      from = lineStart(text, from);
+      to = pos;
+      while (to < text.length && !/^\s*$/.test(getLineText(text, to))) to = lineEndExcl(text, to);
+    }
+
+    if (around) {
+      // Include trailing blank lines, or leading if no trailing
+      var savedTo = to;
+      while (to < text.length && /^\s*$/.test(getLineText(text, to))) to = lineEndExcl(text, to);
+      if (to === savedTo) {
+        // No trailing blanks — include leading blanks
+        while (from > 0 && /^\s*$/.test(getLineText(text, from - 1))) from = lineStart(text, from - 1);
+        from = lineStart(text, from);
+      }
+    }
+
+    if (from === to) return null;
+    return { from: from, to: to };
+  }
+
+  // Helper: get the text of the line containing pos (without newline)
+  function getLineText(text, pos) {
+    if (pos < 0 || pos >= text.length) return '';
+    var info = TU.getLineInfo(text, pos);
+    return info.lineText;
+  }
+
+  // Helper: start of the line containing pos
+  function lineStart(text, pos) {
+    return TU.getLineInfo(text, TU.clamp(pos, 0, Math.max(0, text.length - 1))).lineStart;
+  }
+
+  // Helper: position just past end of line (past \n if present)
+  function lineEndExcl(text, pos) {
+    var info = TU.getLineInfo(text, TU.clamp(pos, 0, Math.max(0, text.length - 1)));
+    return info.lineEnd < text.length ? info.lineEnd + 1 : text.length;
   }
 
   function resolveWordTextObject(text, pos, around, big) {
@@ -249,6 +322,14 @@
           newPos = 0; break;
         case MotionType.DOC_END:
           newPos = forOperator ? text.length : Math.max(0, text.length - 1); break;
+        case MotionType.PARAGRAPH_FORWARD: {
+          newPos = paragraphForward(text, newPos);
+          break;
+        }
+        case MotionType.PARAGRAPH_BACK: {
+          newPos = paragraphBack(text, newPos);
+          break;
+        }
       }
     }
 
@@ -256,6 +337,58 @@
       return { from: Math.min(pos, newPos), to: Math.max(pos, newPos) };
     }
     return newPos;
+  }
+
+  // ── Paragraph motion helpers ───────────────────────────
+
+  function isBlankLine(text, pos) {
+    var info = TU.getLineInfo(text, TU.clamp(pos, 0, Math.max(0, text.length - 1)));
+    return /^\s*$/.test(info.lineText);
+  }
+
+  function paragraphForward(text, pos) {
+    var len = text.length;
+    if (pos >= len) return len;
+    // Skip current non-blank lines
+    var cur = pos;
+    while (cur < len && !isBlankLine(text, cur)) {
+      var info = TU.getLineInfo(text, cur);
+      if (info.lineEnd >= len) return len;
+      cur = info.lineEnd + 1;
+    }
+    // Skip blank lines
+    while (cur < len && isBlankLine(text, cur)) {
+      var info2 = TU.getLineInfo(text, cur);
+      if (info2.lineEnd >= len) return len;
+      cur = info2.lineEnd + 1;
+    }
+    // Return start of next non-blank line (or end)
+    return cur >= len ? len : TU.getLineInfo(text, cur).lineStart;
+  }
+
+  function paragraphBack(text, pos) {
+    if (pos <= 0) return 0;
+    // Move to start of current line first
+    var cur = TU.getLineInfo(text, pos).lineStart;
+    if (cur > 0) cur--; // go to previous line
+    // Skip blank lines
+    while (cur > 0 && isBlankLine(text, cur)) {
+      cur = TU.getLineInfo(text, cur).lineStart;
+      if (cur > 0) cur--;
+    }
+    // Skip non-blank lines
+    while (cur > 0 && !isBlankLine(text, cur)) {
+      cur = TU.getLineInfo(text, cur).lineStart;
+      if (cur > 0) cur--;
+    }
+    // If we stopped on a blank line, move to the line after it
+    if (cur > 0 || isBlankLine(text, cur)) {
+      if (isBlankLine(text, cur)) {
+        var info = TU.getLineInfo(text, cur);
+        return info.lineEnd < text.length ? info.lineEnd + 1 : cur;
+      }
+    }
+    return 0;
   }
 
   // ── Export ────────────────────────────────────────────

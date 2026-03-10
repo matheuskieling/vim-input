@@ -9,13 +9,18 @@
 
   var TEXT_OBJ_KEYS = {
     w: TextObject.WORD, W: TextObject.WORD_BIG,
+    p: TextObject.PARAGRAPH,
     '{': TextObject.BRACE, '}': TextObject.BRACE,
     '(': TextObject.PAREN, ')': TextObject.PAREN,
     '[': TextObject.BRACKET, ']': TextObject.BRACKET,
     '<': TextObject.ANGLE, '>': TextObject.ANGLE,
     '"': TextObject.DOUBLE_QUOTE,
     "'": TextObject.SINGLE_QUOTE,
+    '`': TextObject.BACKTICK,
   };
+
+  // Characters that act as quote-like delimiters for text objects (ci|, ci*, etc.)
+  var CHAR_PAIR_KEYS = { '|': 1, '*': 1, '/': 1, '\\': 1 };
 
   var MOTION_KEYS = {
     h: MotionType.CHAR_LEFT,
@@ -32,6 +37,8 @@
     $: MotionType.LINE_END,
     '^': MotionType.FIRST_NON_BLANK,
     G: MotionType.DOC_END,
+    '{': MotionType.PARAGRAPH_BACK,
+    '}': MotionType.PARAGRAPH_FORWARD,
   };
 
   var OPERATOR_KEYS = {
@@ -126,15 +133,21 @@
       this._pendingTextObj = null;
       this._clearTimeout();
       if (key === 'Escape') { this.reset(); return null; }
-      if (TEXT_OBJ_KEYS[key]) {
+      var obj = TEXT_OBJ_KEYS[key];
+      var charPairChar = null;
+      if (!obj && CHAR_PAIR_KEYS[key]) {
+        obj = TextObject.CHAR_PAIR;
+        charPairChar = key;
+      }
+      if (obj) {
         var cnt = this._parseCount();
         var pendingOp = this._operator;
         this.reset();
+        var modifier = mod === 'i' ? 'inner' : 'around';
         if (pendingOp) {
-          return { type: CommandType.OPERATOR_TEXT_OBJECT, operator: pendingOp, modifier: mod === 'i' ? 'inner' : 'around', object: TEXT_OBJ_KEYS[key], count: cnt };
+          return { type: CommandType.OPERATOR_TEXT_OBJECT, operator: pendingOp, modifier: modifier, object: obj, count: cnt, char: charPairChar };
         }
-        // Standalone text object (used by visual mode via engine)
-        return { type: CommandType.TEXT_OBJECT, modifier: mod === 'i' ? 'inner' : 'around', object: TEXT_OBJ_KEYS[key], count: cnt };
+        return { type: CommandType.TEXT_OBJECT, modifier: modifier, object: obj, count: cnt, char: charPairChar };
       }
       this.reset();
       return null;
