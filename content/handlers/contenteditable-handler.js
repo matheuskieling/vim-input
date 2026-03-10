@@ -190,6 +190,7 @@
   // ── Text object resolver ────────────────────────────
 
   function findMatchingPair(text, pos, open, close) {
+    // 1. Try to find a pair that contains the cursor
     var depth = 0;
     var start = -1;
     for (var i = pos; i >= 0; i--) {
@@ -199,13 +200,53 @@
         depth--;
       }
     }
-    if (start === -1) return null;
-    depth = 0;
-    for (var j = start + 1; j < text.length; j++) {
-      if (text[j] === open) depth++;
-      if (text[j] === close) {
-        if (depth === 0) return { start: start, end: j };
-        depth--;
+    if (start !== -1) {
+      depth = 0;
+      for (var j = start + 1; j < text.length; j++) {
+        if (text[j] === open) depth++;
+        if (text[j] === close) {
+          if (depth === 0) return { start: start, end: j };
+          depth--;
+        }
+      }
+    }
+    // 2. Not inside a pair — search forward on current line for the next one
+    var lineEnd = text.indexOf('\n', pos);
+    if (lineEnd === -1) lineEnd = text.length;
+    for (var k = pos + 1; k < lineEnd; k++) {
+      if (text[k] === open) {
+        depth = 0;
+        for (var l = k + 1; l < text.length; l++) {
+          if (text[l] === open) depth++;
+          if (text[l] === close) {
+            if (depth === 0) return { start: k, end: l };
+            depth--;
+          }
+        }
+        break;
+      }
+    }
+    return null;
+  }
+
+  function findQuotePair(text, pos, quote) {
+    var lineStart = text.lastIndexOf('\n', pos - 1) + 1;
+    var lineEnd = text.indexOf('\n', pos);
+    if (lineEnd === -1) lineEnd = text.length;
+
+    var positions = [];
+    for (var i = lineStart; i < lineEnd; i++) {
+      if (text[i] === quote) positions.push(i);
+    }
+
+    for (var j = 0; j + 1 < positions.length; j += 2) {
+      if (pos >= positions[j] && pos <= positions[j + 1]) {
+        return { start: positions[j], end: positions[j + 1] };
+      }
+    }
+    for (var k = 0; k + 1 < positions.length; k += 2) {
+      if (positions[k] > pos) {
+        return { start: positions[k], end: positions[k + 1] };
       }
     }
     return null;
@@ -216,10 +257,20 @@
     if (object === TextObject.WORD || object === TextObject.WORD_BIG) {
       return resolveWordTextObject(text, pos, around, object === TextObject.WORD_BIG);
     }
+
+    if (object === TextObject.DOUBLE_QUOTE || object === TextObject.SINGLE_QUOTE) {
+      var q = object === TextObject.DOUBLE_QUOTE ? '"' : "'";
+      var qm = findQuotePair(text, pos, q);
+      if (!qm) return null;
+      if (around) return { from: qm.start, to: qm.end + 1 };
+      return { from: qm.start + 1, to: qm.end };
+    }
+
     var pairs = {};
     pairs[TextObject.BRACE] = ['{', '}'];
     pairs[TextObject.PAREN] = ['(', ')'];
     pairs[TextObject.BRACKET] = ['[', ']'];
+    pairs[TextObject.ANGLE] = ['<', '>'];
     var p = pairs[object];
     if (!p) return null;
     var match = findMatchingPair(text, pos, p[0], p[1]);
@@ -786,6 +837,25 @@
       el.blur();
     } else if (command.fromMode === 'VISUAL' || command.fromMode === 'VISUAL_LINE') {
       setCursorAt(el, command.visualHead != null ? command.visualHead : pos);
+    }
+  };
+
+  // ── Scroll ──────────────────────────────────────────
+
+  ContentEditableHandler.prototype.ensureCursorVisible = function (el) {
+    // Browser handles scrolling for contenteditable natively via Selection
+    var sel = window.getSelection();
+    if (sel.rangeCount) {
+      var range = sel.getRangeAt(0);
+      var rect = range.getBoundingClientRect();
+      if (rect.height > 0) {
+        var elRect = el.getBoundingClientRect();
+        if (rect.bottom > elRect.bottom) {
+          el.scrollTop += rect.bottom - elRect.bottom;
+        } else if (rect.top < elRect.top) {
+          el.scrollTop -= elRect.top - rect.top;
+        }
+      }
     }
   };
 

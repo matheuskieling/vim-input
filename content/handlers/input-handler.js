@@ -223,7 +223,7 @@
   // ── Text object resolver ────────────────────────────
 
   function findMatchingPair(text, pos, open, close) {
-    // Search backward for opening bracket
+    // 1. Try to find a pair that contains the cursor
     var depth = 0;
     var start = -1;
     for (var i = pos; i >= 0; i--) {
@@ -233,14 +233,56 @@
         depth--;
       }
     }
-    if (start === -1) return null;
-    // Search forward for closing bracket
-    depth = 0;
-    for (var j = start + 1; j < text.length; j++) {
-      if (text[j] === open) depth++;
-      if (text[j] === close) {
-        if (depth === 0) return { start: start, end: j };
-        depth--;
+    if (start !== -1) {
+      depth = 0;
+      for (var j = start + 1; j < text.length; j++) {
+        if (text[j] === open) depth++;
+        if (text[j] === close) {
+          if (depth === 0) return { start: start, end: j };
+          depth--;
+        }
+      }
+    }
+    // 2. Not inside a pair — search forward on current line for the next one
+    var lineEnd = text.indexOf('\n', pos);
+    if (lineEnd === -1) lineEnd = text.length;
+    for (var k = pos + 1; k < lineEnd; k++) {
+      if (text[k] === open) {
+        depth = 0;
+        for (var l = k + 1; l < text.length; l++) {
+          if (text[l] === open) depth++;
+          if (text[l] === close) {
+            if (depth === 0) return { start: k, end: l };
+            depth--;
+          }
+        }
+        break;
+      }
+    }
+    return null;
+  }
+
+  function findQuotePair(text, pos, quote) {
+    var lineStart = text.lastIndexOf('\n', pos - 1) + 1;
+    var lineEnd = text.indexOf('\n', pos);
+    if (lineEnd === -1) lineEnd = text.length;
+
+    // Collect all quote positions on the line
+    var positions = [];
+    for (var i = lineStart; i < lineEnd; i++) {
+      if (text[i] === quote) positions.push(i);
+    }
+
+    // Pair them sequentially (1st-2nd, 3rd-4th, ...) and find which pair contains pos
+    for (var j = 0; j + 1 < positions.length; j += 2) {
+      if (pos >= positions[j] && pos <= positions[j + 1]) {
+        return { start: positions[j], end: positions[j + 1] };
+      }
+    }
+    // Not inside — search forward for the next pair after cursor
+    for (var k = 0; k + 1 < positions.length; k += 2) {
+      if (positions[k] > pos) {
+        return { start: positions[k], end: positions[k + 1] };
       }
     }
     return null;
@@ -253,10 +295,21 @@
       return resolveWordTextObject(text, pos, around, object === TextObject.WORD_BIG);
     }
 
+    // Quote text objects
+    if (object === TextObject.DOUBLE_QUOTE || object === TextObject.SINGLE_QUOTE) {
+      var q = object === TextObject.DOUBLE_QUOTE ? '"' : "'";
+      var qm = findQuotePair(text, pos, q);
+      if (!qm) return null;
+      if (around) return { from: qm.start, to: qm.end + 1 };
+      return { from: qm.start + 1, to: qm.end };
+    }
+
+    // Bracket/paren/brace/angle text objects
     var pairs = {};
     pairs[TextObject.BRACE] = ['{', '}'];
     pairs[TextObject.PAREN] = ['(', ')'];
     pairs[TextObject.BRACKET] = ['[', ']'];
+    pairs[TextObject.ANGLE] = ['<', '>'];
     var p = pairs[object];
     if (!p) return null;
 
@@ -1099,6 +1152,28 @@
       ? ctx.measureText(text[position]).width : fontSize * 0.6;
     return { top: vi * lineHeight + offsetY, left: x + offsetX, width: w, height: lineHeight };
   }
+
+  InputHandler.prototype.ensureCursorVisible = function (el) {
+    if (el.tagName === 'INPUT') return;
+    var pos;
+    try { pos = el.selectionStart; } catch (e) { return; }
+
+    var coords = getCaretCoordinates(el, pos);
+    var computed = window.getComputedStyle(el);
+    var borderTop = parseFloat(computed.borderTopWidth) || 0;
+    var paddingBottom = parseFloat(computed.paddingBottom) || 0;
+
+    // coords.top includes borderTop + paddingTop; strip borderTop to get scroll-space position
+    var cursorTop = coords.top - borderTop;
+    var cursorBottom = cursorTop + coords.height;
+    var visibleHeight = el.clientHeight - paddingBottom;
+
+    if (cursorBottom > el.scrollTop + visibleHeight) {
+      el.scrollTop = cursorBottom - visibleHeight;
+    } else if (cursorTop < el.scrollTop) {
+      el.scrollTop = cursorTop;
+    }
+  };
 
   InputHandler.prototype.getCursorRect = function (el, overridePos) {
     var pos;

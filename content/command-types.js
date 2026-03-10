@@ -42,6 +42,9 @@
     BRACE: 'brace',
     PAREN: 'paren',
     BRACKET: 'bracket',
+    ANGLE: 'angle',
+    DOUBLE_QUOTE: 'double_quote',
+    SINGLE_QUOTE: 'single_quote',
   });
 
   const CommandType = Object.freeze({

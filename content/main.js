@@ -104,17 +104,30 @@
     }
   }
 
-  function updateCursor() {
+  function updateCursor(skipScroll) {
     if (!activeElement) return;
     var handler = getHandler(activeElement);
     if (!handler) return;
     if (engine.mode !== Mode.INSERT) {
+      // Scroll the element so the cursor stays visible (skip on page-scroll to avoid loops)
+      if (!skipScroll && handler.ensureCursorVisible) {
+        handler.ensureCursorVisible(activeElement);
+      }
       activeElement.style.caretColor = 'transparent';
       var visualPos = (engine.mode === Mode.VISUAL || engine.mode === Mode.VISUAL_LINE)
         ? engine.visualHead : undefined;
       var rect = handler.getCursorRect(activeElement, visualPos);
       if (rect) {
         overlay.showCursor(rect.x, rect.y, rect.width, rect.height);
+        // Scroll the page so the cursor line stays in the viewport
+        if (!skipScroll) {
+          var margin = 10;
+          if (rect.y + rect.height > window.innerHeight) {
+            window.scrollBy(0, rect.y + rect.height - window.innerHeight + margin);
+          } else if (rect.y < 0) {
+            window.scrollBy(0, rect.y - margin);
+          }
+        }
       } else {
         overlay.hideCursor();
       }
@@ -123,6 +136,11 @@
       overlay.hideCursor();
     }
   }
+
+  // Reposition cursor overlay on any scroll (page or element)
+  window.addEventListener('scroll', function () {
+    updateCursor(true);
+  }, true);
 
   function deactivate() {
     if (activeElement) {
