@@ -12,6 +12,9 @@
     '{': TextObject.BRACE, '}': TextObject.BRACE,
     '(': TextObject.PAREN, ')': TextObject.PAREN,
     '[': TextObject.BRACKET, ']': TextObject.BRACKET,
+    '<': TextObject.ANGLE, '>': TextObject.ANGLE,
+    '"': TextObject.DOUBLE_QUOTE,
+    "'": TextObject.SINGLE_QUOTE,
   };
 
   var MOTION_KEYS = {
