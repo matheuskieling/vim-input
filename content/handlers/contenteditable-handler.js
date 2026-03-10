@@ -508,6 +508,14 @@
       case CommandType.ESCAPE:
         this._doEscape(el, text, pos, command);
         break;
+
+      case CommandType.SCROLL_DOWN:
+        this._doScrollJump(el, text, pos, command.count, false);
+        break;
+
+      case CommandType.SCROLL_UP:
+        this._doScrollJump(el, text, pos, command.count, true);
+        break;
     }
   };
 
@@ -838,6 +846,28 @@
     } else if (command.fromMode === 'VISUAL' || command.fromMode === 'VISUAL_LINE') {
       setCursorAt(el, command.visualHead != null ? command.visualHead : pos);
     }
+  };
+
+  // ── Scroll Jump (Ctrl+D / Ctrl+U) ──────────────────
+
+  ContentEditableHandler.prototype._doScrollJump = function (el, text, pos, count, isUp) {
+    var lines = text.split('\n');
+    if (lines.length <= 1) return;
+    var curLine = getLineNumber(text, pos);
+    if (isUp && curLine === 0) return;
+    if (!isUp && curLine === lines.length - 1) return;
+
+    var targetLine = isUp
+      ? Math.max(0, curLine - count)
+      : Math.min(lines.length - 1, curLine + count);
+
+    var info = getLineInfo(text, pos);
+    var col = pos - info.lineStart;
+    var targetOffset = getLineStartOffset(text, targetLine);
+    var targetInfo = getLineInfo(text, targetOffset);
+    var maxCol = Math.max(0, targetInfo.lineEnd - targetInfo.lineStart - 1);
+    if (targetInfo.lineStart === targetInfo.lineEnd) maxCol = 0;
+    setCursorAt(el, targetInfo.lineStart + Math.min(col, maxCol));
   };
 
   // ── Scroll ──────────────────────────────────────────
