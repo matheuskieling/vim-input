@@ -595,11 +595,11 @@
         break;
 
       case CommandType.SCROLL_DOWN:
-        this._doScrollJump(el, command.count, false, command.center);
+        this._doScrollJump(el, command.count, false);
         break;
 
       case CommandType.SCROLL_UP:
-        this._doScrollJump(el, command.count, true, command.center);
+        this._doScrollJump(el, command.count, true);
         break;
 
       case CommandType.REPLACE_CHAR:
@@ -1038,7 +1038,7 @@
 
   // ── Scroll Jump (Ctrl+D / Ctrl+U) ──────────────────
 
-  InputHandler.prototype._doScrollJump = function (el, count, isUp, center) {
+  InputHandler.prototype._doScrollJump = function (el, count, isUp) {
     var vLines = getElementVisualLines(el);
     if (!vLines || vLines.length <= 1) {
       // For single-line inputs or single visual line, use logical lines

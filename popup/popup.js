@@ -8,7 +8,7 @@
   var useClipboardToggle = document.getElementById('use-clipboard');
   var highlightYankToggle = document.getElementById('highlight-yank');
   var halfPageJumpInput = document.getElementById('half-page-jump');
-  var centerOnJumpToggle = document.getElementById('center-on-jump');
+  var alwaysCenteredToggle = document.getElementById('always-centered');
   var excludeBtn = document.getElementById('exclude-btn');
   var currentUrlText = document.getElementById('current-url-text');
   var excludeList = document.getElementById('exclude-list');
@@ -48,7 +48,7 @@
   // ── Load settings ───────────────────────────────────
 
   chrome.storage.sync.get(
-    { enabled: true, startMode: 'INSERT', excludePatterns: [], matchBrackets: false, tabSize: 4, useClipboard: false, highlightYank: false, halfPageJump: 20, centerOnJump: false },
+    { enabled: true, startMode: 'INSERT', excludePatterns: [], matchBrackets: false, tabSize: 4, useClipboard: false, highlightYank: false, halfPageJump: 20, alwaysCentered: false },
     function (items) {
       enabledToggle.checked = items.enabled;
       startModeSelect.value = items.startMode || 'INSERT';
@@ -57,7 +57,7 @@
       useClipboardToggle.checked = items.useClipboard || false;
       highlightYankToggle.checked = items.highlightYank || false;
       halfPageJumpInput.value = String(items.halfPageJump || 20);
-      centerOnJumpToggle.checked = items.centerOnJump || false;
+      alwaysCenteredToggle.checked = items.alwaysCentered || false;
       excludePatterns = items.excludePatterns || [];
       renderExcludeList();
       updateExcludeBtn();
@@ -73,7 +73,7 @@
   useClipboardToggle.addEventListener('change', saveSettings);
   highlightYankToggle.addEventListener('change', saveSettings);
   halfPageJumpInput.addEventListener('change', saveSettings);
-  centerOnJumpToggle.addEventListener('change', saveSettings);
+  alwaysCenteredToggle.addEventListener('change', saveSettings);
 
   // ── Exclude current site ────────────────────────────
 
@@ -178,7 +178,7 @@
       useClipboard: useClipboardToggle.checked,
       highlightYank: highlightYankToggle.checked,
       halfPageJump: parseInt(halfPageJumpInput.value, 10) || 20,
-      centerOnJump: centerOnJumpToggle.checked,
+      alwaysCentered: alwaysCenteredToggle.checked,
       excludePatterns: excludePatterns,
     }, function () {
       statusEl.textContent = 'Saved!';
