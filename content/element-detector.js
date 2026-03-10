@@ -12,7 +12,7 @@
     if (el.tagName === 'TEXTAREA') return true;
     if (el.tagName === 'INPUT') {
       var type = (el.type || '').toLowerCase();
-      return !type || type === 'text' || type === 'search' || type === 'url' || type === 'tel' || type === 'password';
+      return !type || type === 'text' || type === 'search' || type === 'url' || type === 'tel' || type === 'password' || type === 'email';
     }
     return false;
   }

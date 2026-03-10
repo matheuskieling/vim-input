@@ -19,7 +19,7 @@
 ## Limitations
 
 - **Complex input fields**: Some web applications use heavily customized input components that go beyond standard `<input>`, `<textarea>`, or `contenteditable` elements. Examples include Jira's description field, Slack's message composer, and similar rich editors built with custom frameworks. The extension may not work correctly (or at all) in these cases.
-- **Unsupported input types**: Chrome restricts selection API access on `<input type="email">` and `<input type="number">`, so the extension cannot operate on these fields.
+- **Unsupported input types**: Chrome restricts selection API access on `<input type="number">`, so the extension cannot operate on these fields.
 - **Line wrapping**: There is partial support for navigating visually wrapped lines (e.g., `j`/`k` moving within a wrapped line), but it does not work reliably in all cases.
 - **No active maintenance**: This project was built for my own personal use and is shared as-is for anyone who might find it useful in their workflow. There are no plans for ongoing maintenance, feature requests, or bug fixes.
 
@@ -267,10 +267,9 @@ You can exclude the current site with one click, manage exclusions as a list, or
 
 | Element | Support | Notes |
 |---------|---------|-------|
-| `<input type="text">` | Full | Also `search`, `url`, `tel`, `password` |
+| `<input type="text">` | Full | Also `search`, `url`, `tel`, `password`, `email` |
 | `<textarea>` | Full | Multiline with visual line wrapping |
 | `contenteditable` | Full | GitHub, Notion, rich text editors, etc. |
-| `<input type="email">` | Not supported | Chrome restricts selection API access |
 | `<input type="number">` | Not supported | Chrome restricts selection API access |
 
 On sites where Chrome's native UI swallows the Escape key (Google Search autocomplete, GitHub), the extension detects the resulting focus loss and treats it as an Escape press.

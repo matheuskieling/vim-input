@@ -56,6 +56,12 @@
     Settings.load(function () {
       if (!Settings.get('enabled') || Settings.isPageExcluded()) return;
 
+      // Swap email inputs to text so selectionStart/selectionEnd work
+      if (el.tagName === 'INPUT' && el.type.toLowerCase() === 'email') {
+        el.setAttribute('data-input-vim-original-type', 'email');
+        el.type = 'text';
+      }
+
       var mode = Settings.getStartMode();
       _activeElement = el;
       el.setAttribute('data-input-vim', mode);
@@ -70,6 +76,12 @@
     if (_activeElement) {
       _activeElement.style.caretColor = '';
       _activeElement.removeAttribute('data-input-vim');
+      // Restore original email type if it was swapped
+      var origType = _activeElement.getAttribute('data-input-vim-original-type');
+      if (origType) {
+        _activeElement.type = origType;
+        _activeElement.removeAttribute('data-input-vim-original-type');
+      }
     }
     _overlay.hideCursor();
     _activeElement = null;

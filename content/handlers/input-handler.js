@@ -717,12 +717,28 @@
   }
 
   InputHandler.prototype.ensureCursorVisible = function (el) {
-    if (el.tagName === 'INPUT') return;
     var pos;
     try { pos = el.selectionStart; } catch (e) { return; }
 
     var coords = getCaretCoordinates(el, pos);
     var computed = window.getComputedStyle(el);
+
+    if (el.tagName === 'INPUT') {
+      var paddingLeft = parseFloat(computed.paddingLeft) || 0;
+      var paddingRight = parseFloat(computed.paddingRight) || 0;
+      var borderLeft = parseFloat(computed.borderLeftWidth) || 0;
+      var visibleWidth = el.clientWidth - paddingLeft - paddingRight;
+      var cursorLeft = coords.left - paddingLeft - borderLeft;
+      var cursorRight = cursorLeft + coords.width;
+
+      if (cursorRight > el.scrollLeft + visibleWidth) {
+        el.scrollLeft = cursorRight - visibleWidth;
+      } else if (cursorLeft < el.scrollLeft) {
+        el.scrollLeft = cursorLeft;
+      }
+      return;
+    }
+
     var borderTop = parseFloat(computed.borderTopWidth) || 0;
     var paddingBottom = parseFloat(computed.paddingBottom) || 0;
 
