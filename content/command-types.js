@@ -22,6 +22,8 @@
     WORD_FORWARD_BIG: 'word_forward_big', // W
     WORD_BACK_BIG: 'word_back_big',       // B
     WORD_END_BIG: 'word_end_big',         // E
+    WORD_END_BACK: 'word_end_back',       // ge
+    WORD_END_BACK_BIG: 'word_end_back_big', // gE
     FIND_CHAR: 'find_char',       // f{char}
     FIND_CHAR_BACK: 'find_char_back', // F{char}
     TILL_CHAR: 'till_char',       // t{char}
