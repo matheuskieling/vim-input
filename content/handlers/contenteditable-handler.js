@@ -278,7 +278,7 @@
   };
 
   ContentEditableHandler.prototype._doOperatorTextObject = function (el, text, pos, command) {
-    var range = MR.resolveTextObject(text, pos, command.object, command.modifier);
+    var range = MR.resolveTextObject(text, pos, command.object, command.modifier, command.char);
     if (!range) return;
 
     var deleted = text.substring(range.from, range.to);
@@ -422,7 +422,7 @@
   ContentEditableHandler.prototype.selectTextObject = function (el, command, engine) {
     var text = getFlatText(el);
     var pos = flatOffsetFromSelection(el);
-    var range = MR.resolveTextObject(text, pos, command.object, command.modifier);
+    var range = MR.resolveTextObject(text, pos, command.object, command.modifier, command.char);
     if (!range) return;
     engine.visualAnchor = range.from;
     setSelectionRange(el, range.from, range.to);

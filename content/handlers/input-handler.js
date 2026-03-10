@@ -291,7 +291,7 @@
   InputHandler.prototype._doOperatorTextObject = function (el, command) {
     var text = el.value;
     var pos = el.selectionStart;
-    var range = MR.resolveTextObject(text, pos, command.object, command.modifier);
+    var range = MR.resolveTextObject(text, pos, command.object, command.modifier, command.char);
     if (!range) return;
 
     var deleted = text.substring(range.from, range.to);
@@ -474,7 +474,7 @@
   InputHandler.prototype.selectTextObject = function (el, command, engine) {
     var text = el.value;
     var pos = el.selectionStart;
-    var range = MR.resolveTextObject(text, pos, command.object, command.modifier);
+    var range = MR.resolveTextObject(text, pos, command.object, command.modifier, command.char);
     if (!range) return;
     engine.visualAnchor = range.from;
     setSelection(el, range.from, range.to);
