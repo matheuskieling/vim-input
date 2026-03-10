@@ -11,18 +11,18 @@
     this.parser = new KeyParser();
     this.visualAnchor = 0;
     this.visualHead = 0;
-    this._onModeChange = null;
+    this._onModeChangeListeners = [];
   }
 
   VimEngine.prototype.onModeChange = function (cb) {
-    this._onModeChange = cb;
+    this._onModeChangeListeners.push(cb);
   };
 
   VimEngine.prototype.setMode = function (newMode) {
     if (this.mode !== newMode) {
       this.mode = newMode;
-      if (this._onModeChange) {
-        this._onModeChange(newMode);
+      for (var i = 0; i < this._onModeChangeListeners.length; i++) {
+        this._onModeChangeListeners[i](newMode);
       }
     }
   };
@@ -72,28 +72,23 @@
       }
 
       // Operators act on selection
-      if (key === 'd' || key === 'x' || key === 'D' || key === 'X') {
+      var VISUAL_OPS = {
+        d: OperatorType.DELETE, x: OperatorType.DELETE,
+        D: OperatorType.DELETE, X: OperatorType.DELETE,
+        y: OperatorType.YANK, Y: OperatorType.YANK,
+        c: OperatorType.CHANGE, s: OperatorType.CHANGE,
+        C: OperatorType.CHANGE, S: OperatorType.CHANGE,
+      };
+      if (VISUAL_OPS[key]) {
         this.parser.reset();
-        var cmd = { type: CommandType.VISUAL_OPERATOR, operator: OperatorType.DELETE, lineWise: this.mode === Mode.VISUAL_LINE };
-        this.setMode(Mode.NORMAL);
-        return cmd;
-      }
-      if (key === 'y' || key === 'Y') {
-        this.parser.reset();
-        var cmd2 = { type: CommandType.VISUAL_OPERATOR, operator: OperatorType.YANK, lineWise: this.mode === Mode.VISUAL_LINE };
-        this.setMode(Mode.NORMAL);
-        return cmd2;
-      }
-      if (key === 'c' || key === 's' || key === 'C' || key === 'S') {
-        this.parser.reset();
-        var cmd3 = { type: CommandType.VISUAL_OPERATOR, operator: OperatorType.CHANGE, lineWise: this.mode === Mode.VISUAL_LINE };
-        this.setMode(Mode.INSERT);
-        return cmd3;
+        var opCmd = { type: CommandType.VISUAL_OPERATOR, operator: VISUAL_OPS[key], lineWise: this.mode === Mode.VISUAL_LINE };
+        this.setMode(VISUAL_OPS[key] === OperatorType.CHANGE ? Mode.INSERT : Mode.NORMAL);
+        return opCmd;
       }
 
       // i/a in visual mode start text object selection (not insert)
       if (key === 'i' || key === 'a') {
-        this.parser._pendingTextObj = key;
+        this.parser.setPendingTextObj(key);
         return null;
       }
 
@@ -126,17 +121,7 @@
         return { type: CommandType.ESCAPE, fromMode: Mode.NORMAL };
 
       case CommandType.OPERATOR_MOTION:
-        if (command.operator === OperatorType.CHANGE) {
-          this.setMode(Mode.INSERT);
-        }
-        return command;
-
       case CommandType.LINE_OPERATOR:
-        if (command.operator === OperatorType.CHANGE) {
-          this.setMode(Mode.INSERT);
-        }
-        return command;
-
       case CommandType.OPERATOR_TEXT_OBJECT:
         if (command.operator === OperatorType.CHANGE) {
           this.setMode(Mode.INSERT);
