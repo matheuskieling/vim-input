@@ -216,6 +216,7 @@ In Visual or Visual Line mode, motions extend the selection. Text objects set th
 | `d` / `x` | Delete selection |
 | `y` | Yank selection |
 | `c` / `s` | Change selection (delete + enter Insert) |
+| `o` | Swap cursor to other end of selection |
 
 You can switch between Visual and Visual Line with `v` / `V`, or press the same key again to exit.
 
