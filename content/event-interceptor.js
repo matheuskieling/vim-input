@@ -290,6 +290,12 @@
       return;
     }
 
+    // Handle visual 'o' — anchor/head already swapped, just update cursor
+    if (command.type === CommandType.VISUAL_SWAP) {
+      _updateCursor();
+      return;
+    }
+
     // Paste: sync from clipboard first (async)
     if (command.type === CommandType.PASTE || command.type === CommandType.PASTE_BEFORE) {
       var pasteEl = el;

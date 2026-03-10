@@ -73,6 +73,7 @@
     ESCAPE: 'escape',
     REPLACE_CHAR: 'replace_char',
     DELETE_CHAR: 'delete_char',
+    VISUAL_SWAP: 'visual_swap',
   });
 
   const InsertEntry = Object.freeze({

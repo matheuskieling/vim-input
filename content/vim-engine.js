@@ -86,6 +86,15 @@
         return opCmd;
       }
 
+      // 'o' swaps cursor between anchor and head
+      if (key === 'o') {
+        var tmp = this.visualAnchor;
+        this.visualAnchor = this.visualHead;
+        this.visualHead = tmp;
+        this.parser.reset();
+        return { type: CommandType.VISUAL_SWAP };
+      }
+
       // i/a in visual mode start text object selection (not insert)
       if (key === 'i' || key === 'a') {
         this.parser.setPendingTextObj(key);
