@@ -23,7 +23,7 @@
   var tabSize = 4;
   var highlightYank = false;
   var halfPageJump = 20;
-  var centerOnJump = false;
+  var alwaysCentered = false;
 
   var BRACKET_PAIRS = { '(': ')', '{': '}', '[': ']' };
   var CLOSING_BRACKETS = { ')': '(', '}': '{', ']': '[' };
@@ -123,11 +123,23 @@
         overlay.showCursor(rect.x, rect.y, rect.width, rect.height);
         // Scroll the page so the cursor line stays in the viewport
         if (!skipScroll) {
-          var margin = 10;
-          if (rect.y + rect.height > window.innerHeight) {
-            window.scrollBy(0, rect.y + rect.height - window.innerHeight + margin);
-          } else if (rect.y < 0) {
-            window.scrollBy(0, rect.y - margin);
+          if (alwaysCentered) {
+            var centerY = rect.y + rect.height / 2;
+            var screenCenter = window.innerHeight / 2;
+            var diff = centerY - screenCenter;
+            if (Math.abs(diff) > 1) {
+              window.scrollBy(0, diff);
+              // Re-read rect after scroll so overlay is in the right place
+              rect = handler.getCursorRect(activeElement, visualPos);
+              if (rect) overlay.showCursor(rect.x, rect.y, rect.width, rect.height);
+            }
+          } else {
+            var margin = 10;
+            if (rect.y + rect.height > window.innerHeight) {
+              window.scrollBy(0, rect.y + rect.height - window.innerHeight + margin);
+            } else if (rect.y < 0) {
+              window.scrollBy(0, rect.y - margin);
+            }
           }
         }
       } else {
@@ -190,7 +202,7 @@
   function activateElement(el) {
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
       chrome.storage.sync.get(
-        { enabled: true, startMode: 'INSERT', excludePatterns: [], matchBrackets: false, tabSize: 4, useClipboard: false, highlightYank: false, halfPageJump: 20, centerOnJump: false },
+        { enabled: true, startMode: 'INSERT', excludePatterns: [], matchBrackets: false, tabSize: 4, useClipboard: false, highlightYank: false, halfPageJump: 20, alwaysCentered: false },
         function (items) {
           enabled = items.enabled;
           excludePatterns = items.excludePatterns || [];
@@ -198,7 +210,7 @@
           tabSize = items.tabSize || 4;
           highlightYank = items.highlightYank || false;
           halfPageJump = items.halfPageJump || 20;
-          centerOnJump = items.centerOnJump || false;
+          alwaysCentered = items.alwaysCentered || false;
           Register.setUseClipboard(items.useClipboard || false);
           if (!enabled || isPageExcluded()) return;
 
@@ -378,7 +390,6 @@
       var scrollCmd = {
         type: e.key === 'd' ? CommandType.SCROLL_DOWN : CommandType.SCROLL_UP,
         count: halfPageJump,
-        center: centerOnJump,
       };
       handler.execute(activeElement, scrollCmd, engine);
       if ((engine.mode === Mode.VISUAL || engine.mode === Mode.VISUAL_LINE)) {
@@ -396,20 +407,8 @@
             }
           }
         }
-        // contenteditable: handler already set cursor, just update visualHead
       }
       updateCursor();
-      // Center the cursor line on screen if the setting is enabled
-      if (centerOnJump) {
-        var cRect = handler.getCursorRect(activeElement,
-          (engine.mode === Mode.VISUAL || engine.mode === Mode.VISUAL_LINE) ? engine.visualHead : undefined);
-        if (cRect) {
-          var centerY = cRect.y + cRect.height / 2;
-          var screenCenter = window.innerHeight / 2;
-          window.scrollBy(0, centerY - screenCenter);
-          updateCursor(true);
-        }
-      }
       return;
     }
 
