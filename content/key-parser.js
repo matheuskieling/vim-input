@@ -49,7 +49,14 @@
     O: InsertEntry.O_UPPER,
   };
 
+  var _REVERSE_FIND = {};
+  _REVERSE_FIND[MotionType.FIND_CHAR] = MotionType.FIND_CHAR_BACK;
+  _REVERSE_FIND[MotionType.FIND_CHAR_BACK] = MotionType.FIND_CHAR;
+  _REVERSE_FIND[MotionType.TILL_CHAR] = MotionType.TILL_CHAR_BACK;
+  _REVERSE_FIND[MotionType.TILL_CHAR_BACK] = MotionType.TILL_CHAR;
+
   function KeyParser() {
+    this._lastFind = null; // { motion, char } for ; and , repeat
     this.reset();
   }
 
@@ -106,7 +113,7 @@
       this.reset();
       var motion = motionMap[findType];
       // Store for ; and , repeat
-      window.InputVim._lastFind = { motion: motion, char: key };
+      this._lastFind = { motion: motion, char: key };
       if (op) {
         return { type: CommandType.OPERATOR_MOTION, operator: op, motion: motion, char: key, count: count };
       }
@@ -218,14 +225,9 @@
 
     // ; and , — repeat last f/F/t/T
     if (key === ';' || key === ',') {
-      var lf = window.InputVim._lastFind;
+      var lf = this._lastFind;
       if (lf) {
-        var REVERSE = {};
-        REVERSE[MotionType.FIND_CHAR] = MotionType.FIND_CHAR_BACK;
-        REVERSE[MotionType.FIND_CHAR_BACK] = MotionType.FIND_CHAR;
-        REVERSE[MotionType.TILL_CHAR] = MotionType.TILL_CHAR_BACK;
-        REVERSE[MotionType.TILL_CHAR_BACK] = MotionType.TILL_CHAR;
-        var mot = key === ';' ? lf.motion : REVERSE[lf.motion];
+        var mot = key === ';' ? lf.motion : _REVERSE_FIND[lf.motion];
         var cnt = this._parseCount();
         var pendingOp = this._operator;
         this.reset();
@@ -269,24 +271,6 @@
         var motion = MOTION_KEYS[key];
         this.reset();
         return { type: CommandType.OPERATOR_MOTION, operator: op, motion: motion, count: count };
-      }
-
-      // $ after operator
-      if (key === '$') {
-        this.reset();
-        return { type: CommandType.OPERATOR_MOTION, operator: op, motion: MotionType.LINE_END, count: count };
-      }
-
-      // '^' after operator
-      if (key === '^') {
-        this.reset();
-        return { type: CommandType.OPERATOR_MOTION, operator: op, motion: MotionType.FIRST_NON_BLANK, count: count };
-      }
-
-      // '0' after operator
-      if (key === '0') {
-        this.reset();
-        return { type: CommandType.OPERATOR_MOTION, operator: op, motion: MotionType.LINE_START, count: count };
       }
 
       // Invalid key after operator, reset
@@ -382,14 +366,13 @@
     return null;
   };
 
-  // Handle 'gg' when pending operator is active
-  KeyParser.prototype._handlePendingGWithOperator = function () {
-    // This case is handled inline in feed()
-  };
-
   KeyParser.prototype._parseCount = function () {
     var n = parseInt(this._count, 10);
     return isNaN(n) ? 1 : n;
+  };
+
+  KeyParser.prototype.setPendingTextObj = function (key) {
+    this._pendingTextObj = key;
   };
 
   KeyParser.prototype.getPending = function () {
