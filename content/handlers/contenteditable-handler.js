@@ -170,6 +170,70 @@
     return val < min ? min : val > max ? max : val;
   }
 
+  // ── Visual line helpers for contenteditable ────────────
+
+  /**
+   * Computes visual line boundaries for a contenteditable element,
+   * accounting for soft wrapping. Uses Range API to detect Y position changes.
+   * Returns an array of { start, end } (flat text offsets, end is exclusive).
+   */
+  function computeCEVisualLines(el, text) {
+    if (text.length === 0) return [{ start: 0, end: 0 }];
+
+    var lines = [];
+    var lineStart = 0;
+    var lastTop = -1;
+    var tolerance = 2; // px — absorb sub-pixel rounding
+
+    var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+    var node;
+    var range = document.createRange();
+    var flatIdx = 0;
+
+    while ((node = walker.nextNode())) {
+      var content = node.textContent;
+      for (var i = 0; i < content.length; i++) {
+        if (content[i] === '\n') {
+          lines.push({ start: lineStart, end: flatIdx });
+          lineStart = flatIdx + 1;
+          lastTop = -1;
+          flatIdx++;
+          continue;
+        }
+
+        range.setStart(node, i);
+        range.setEnd(node, i + 1);
+        var rect = range.getBoundingClientRect();
+
+        if (rect.height > 0 && lastTop >= 0 && rect.top - lastTop > tolerance) {
+          lines.push({ start: lineStart, end: flatIdx });
+          lineStart = flatIdx;
+        }
+
+        if (rect.height > 0) lastTop = rect.top;
+        flatIdx++;
+      }
+    }
+
+    lines.push({ start: lineStart, end: text.length });
+    return lines;
+  }
+
+  function findCEVisualLine(vLines, pos) {
+    for (var i = 0; i < vLines.length; i++) {
+      var vl = vLines[i];
+      if (vl.start === vl.end) {
+        if (pos === vl.start) return i;
+        continue;
+      }
+      if (pos >= vl.start &&
+          (pos < vl.end || (i === vLines.length - 1 && pos <= vl.end))) {
+        return i;
+      }
+    }
+    return vLines.length - 1;
+  }
+
   // ── Find/Till helpers ─────────────────────────────────
 
   function findCharForward(text, pos, ch) {
@@ -309,7 +373,7 @@
 
   // ── Motion resolver for flat text ────────────────────
 
-  function resolveMotion(text, pos, motion, count, forOperator, desiredCol, charArg) {
+  function resolveMotion(text, pos, motion, count, forOperator, desiredCol, charArg, vLines) {
     var newPos = pos;
     var col = (desiredCol >= 0) ? desiredCol : -1;
     for (var i = 0; i < count; i++) {
@@ -326,27 +390,49 @@
           break;
         }
         case MotionType.LINE_UP: {
-          var info = getLineInfo(text, newPos);
-          if (col < 0) col = info.col;
-          var ln = getLineNumber(text, newPos);
-          if (ln > 0) {
-            var pls = getLineStartOffset(text, ln - 1);
-            var pli = getLineInfo(text, pls);
-            var maxC = forOperator ? pli.lineText.length : Math.max(0, pli.lineText.length - 1);
-            newPos = pls + Math.min(col, maxC);
+          if (vLines) {
+            var vi = findCEVisualLine(vLines, newPos);
+            if (col < 0) col = newPos - vLines[vi].start;
+            if (vi > 0) {
+              var prev = vLines[vi - 1];
+              var prevLen = prev.end - prev.start;
+              var maxC = forOperator ? prevLen : Math.max(0, prevLen - 1);
+              newPos = prev.start + Math.min(col, maxC);
+            }
+          } else {
+            var info = getLineInfo(text, newPos);
+            if (col < 0) col = info.col;
+            var ln = getLineNumber(text, newPos);
+            if (ln > 0) {
+              var pls = getLineStartOffset(text, ln - 1);
+              var pli = getLineInfo(text, pls);
+              var maxC = forOperator ? pli.lineText.length : Math.max(0, pli.lineText.length - 1);
+              newPos = pls + Math.min(col, maxC);
+            }
           }
           break;
         }
         case MotionType.LINE_DOWN: {
-          var info2 = getLineInfo(text, newPos);
-          if (col < 0) col = info2.col;
-          var ln2 = getLineNumber(text, newPos);
-          var totalLines = text.split('\n').length;
-          if (ln2 < totalLines - 1) {
-            var nls = getLineStartOffset(text, ln2 + 1);
-            var nli = getLineInfo(text, nls);
-            var maxC2 = forOperator ? nli.lineText.length : Math.max(0, nli.lineText.length - 1);
-            newPos = nls + Math.min(col, maxC2);
+          if (vLines) {
+            var vi2 = findCEVisualLine(vLines, newPos);
+            if (col < 0) col = newPos - vLines[vi2].start;
+            if (vi2 < vLines.length - 1) {
+              var next = vLines[vi2 + 1];
+              var nextLen = next.end - next.start;
+              var maxC2 = forOperator ? nextLen : Math.max(0, nextLen - 1);
+              newPos = next.start + Math.min(col, maxC2);
+            }
+          } else {
+            var info2 = getLineInfo(text, newPos);
+            if (col < 0) col = info2.col;
+            var ln2 = getLineNumber(text, newPos);
+            var totalLines = text.split('\n').length;
+            if (ln2 < totalLines - 1) {
+              var nls = getLineStartOffset(text, ln2 + 1);
+              var nli = getLineInfo(text, nls);
+              var maxC2 = forOperator ? nli.lineText.length : Math.max(0, nli.lineText.length - 1);
+              newPos = nls + Math.min(col, maxC2);
+            }
           }
           break;
         }
@@ -521,54 +607,19 @@
 
   ContentEditableHandler.prototype._doMotion = function (el, text, pos, command) {
     var isVertical = command.motion === MotionType.LINE_UP || command.motion === MotionType.LINE_DOWN;
+    var vLines = null;
 
     if (isVertical) {
-      console.log('[InputVim CE] j/k motion:', command.motion === MotionType.LINE_DOWN ? 'DOWN' : 'UP');
-      console.log('[InputVim CE] flatText length:', text.length);
-      console.log('[InputVim CE] flatText (first 200 chars):', JSON.stringify(text.substring(0, 200)));
-      console.log('[InputVim CE] current pos:', pos);
-      var debugInfo = getLineInfo(text, pos);
-      console.log('[InputVim CE] lineInfo:', JSON.stringify(debugInfo));
-      console.log('[InputVim CE] lineNumber:', getLineNumber(text, pos));
-      console.log('[InputVim CE] total logical lines:', text.split('\n').length);
-      console.log('[InputVim CE] has newlines:', text.indexOf('\n') !== -1);
-      console.log('[InputVim CE] desiredCol before:', this._desiredCol);
-
-      // Log element dimensions to check if soft-wrap is happening
-      var elRect = el.getBoundingClientRect();
-      var computed = window.getComputedStyle(el);
-      console.log('[InputVim CE] element width:', elRect.width, 'height:', elRect.height);
-      console.log('[InputVim CE] whiteSpace:', computed.whiteSpace);
-      console.log('[InputVim CE] wordWrap:', computed.wordWrap);
-      console.log('[InputVim CE] overflowWrap:', computed.overflowWrap);
-
-      // Try to detect visual lines via Range measurement
-      try {
-        var sel = window.getSelection();
-        if (sel.rangeCount) {
-          var range = sel.getRangeAt(0).cloneRange();
-          range.collapse(true);
-          var cursorRect = range.getBoundingClientRect();
-          console.log('[InputVim CE] cursor rect:', JSON.stringify({ x: cursorRect.left, y: cursorRect.top }));
-        }
-      } catch (e) {
-        console.log('[InputVim CE] could not get cursor rect:', e.message);
-      }
-
+      vLines = computeCEVisualLines(el, text);
       if (this._desiredCol < 0) {
-        var info = getLineInfo(text, pos);
-        this._desiredCol = info.col;
+        var vi = findCEVisualLine(vLines, pos);
+        this._desiredCol = pos - vLines[vi].start;
       }
     } else {
       this._desiredCol = -1;
     }
 
-    var newPos = resolveMotion(text, pos, command.motion, command.count, false, this._desiredCol, command.char);
-
-    if (isVertical) {
-      console.log('[InputVim CE] newPos after resolveMotion:', newPos);
-      console.log('[InputVim CE] position changed:', pos !== newPos);
-    }
+    var newPos = resolveMotion(text, pos, command.motion, command.count, false, this._desiredCol, command.char, vLines);
 
     // Normal-mode clamp: cursor must be ON a character, not past the last one
     if (text.length > 0) {
@@ -577,16 +628,13 @@
       if (newPos > maxPos) newPos = maxPos;
     }
 
-    if (isVertical) {
-      console.log('[InputVim CE] final newPos (after clamp):', newPos);
-    }
-
     setCursorAt(el, newPos);
   };
 
   ContentEditableHandler.prototype._doOperatorMotion = function (el, text, pos, command) {
-    var range = resolveMotion(text, pos, command.motion, command.count, true, -1, command.char);
     var linewise = command.motion === MotionType.LINE_UP || command.motion === MotionType.LINE_DOWN;
+    var vLines = linewise ? computeCEVisualLines(el, text) : null;
+    var range = resolveMotion(text, pos, command.motion, command.count, true, -1, command.char, vLines);
 
     if (linewise) {
       var startLine = getLineInfo(text, range.from);
@@ -719,17 +767,19 @@
     var text = getFlatText(el);
     var anchor = engine.visualAnchor;
     var isVertical = command.motion === MotionType.LINE_UP || command.motion === MotionType.LINE_DOWN;
+    var vLines = null;
 
     if (isVertical) {
+      vLines = computeCEVisualLines(el, text);
       if (this._desiredCol < 0) {
-        var headInfo = getLineInfo(text, engine.visualHead);
-        this._desiredCol = headInfo.col;
+        var vi = findCEVisualLine(vLines, engine.visualHead);
+        this._desiredCol = engine.visualHead - vLines[vi].start;
       }
     } else {
       this._desiredCol = -1;
     }
 
-    var newPos = resolveMotion(text, engine.visualHead, command.motion, command.count, false, this._desiredCol, command.char);
+    var newPos = resolveMotion(text, engine.visualHead, command.motion, command.count, false, this._desiredCol, command.char, vLines);
     engine.visualHead = newPos;
     var isLinewise = engine.mode === 'VISUAL_LINE';
 
@@ -892,23 +942,23 @@
   // ── Scroll Jump (Ctrl+D / Ctrl+U) ──────────────────
 
   ContentEditableHandler.prototype._doScrollJump = function (el, text, pos, count, isUp) {
-    var lines = text.split('\n');
-    if (lines.length <= 1) return;
-    var curLine = getLineNumber(text, pos);
-    if (isUp && curLine === 0) return;
-    if (!isUp && curLine === lines.length - 1) return;
+    var vLines = computeCEVisualLines(el, text);
+    if (vLines.length <= 1) return;
 
-    var targetLine = isUp
-      ? Math.max(0, curLine - count)
-      : Math.min(lines.length - 1, curLine + count);
+    var vi = findCEVisualLine(vLines, pos);
+    if (isUp && vi === 0) return;
+    if (!isUp && vi === vLines.length - 1) return;
 
-    var info = getLineInfo(text, pos);
-    var col = pos - info.lineStart;
-    var targetOffset = getLineStartOffset(text, targetLine);
-    var targetInfo = getLineInfo(text, targetOffset);
-    var maxCol = Math.max(0, targetInfo.lineEnd - targetInfo.lineStart - 1);
-    if (targetInfo.lineStart === targetInfo.lineEnd) maxCol = 0;
-    setCursorAt(el, targetInfo.lineStart + Math.min(col, maxCol));
+    var targetVi = isUp
+      ? Math.max(0, vi - count)
+      : Math.min(vLines.length - 1, vi + count);
+
+    var col = pos - vLines[vi].start;
+    var targetVL = vLines[targetVi];
+    var targetLen = targetVL.end - targetVL.start;
+    var maxCol = Math.max(0, targetLen - 1);
+    if (targetVL.start === targetVL.end) maxCol = 0;
+    setCursorAt(el, targetVL.start + Math.min(col, maxCol));
   };
 
   // ── Scroll ──────────────────────────────────────────
