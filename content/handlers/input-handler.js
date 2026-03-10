@@ -594,6 +594,14 @@
         this._doRedo(el, command.count);
         break;
 
+      case CommandType.SCROLL_DOWN:
+        this._doScrollJump(el, command.count, false, command.center);
+        break;
+
+      case CommandType.SCROLL_UP:
+        this._doScrollJump(el, command.count, true, command.center);
+        break;
+
       case CommandType.REPLACE_CHAR:
         this._doReplaceChar(el, command);
         break;
@@ -1026,6 +1034,53 @@
     } else if (command.fromMode === 'VISUAL' || command.fromMode === 'VISUAL_LINE') {
       setCursor(el, command.visualHead != null ? command.visualHead : el.selectionStart);
     }
+  };
+
+  // ── Scroll Jump (Ctrl+D / Ctrl+U) ──────────────────
+
+  InputHandler.prototype._doScrollJump = function (el, count, isUp, center) {
+    var vLines = getElementVisualLines(el);
+    if (!vLines || vLines.length <= 1) {
+      // For single-line inputs or single visual line, use logical lines
+      var text = el.value;
+      var lines = getLines(text);
+      if (lines.length <= 1) return;
+      var curLine = getLineNumber(text, el.selectionStart);
+      if (isUp && curLine === 0) return;
+      if (!isUp && curLine === lines.length - 1) return;
+
+      var targetLine = isUp
+        ? Math.max(0, curLine - count)
+        : Math.min(lines.length - 1, curLine + count);
+
+      var info = getLineInfo(text, el.selectionStart);
+      var col = el.selectionStart - info.lineStart;
+      var targetOffset = getLineStartOffset(text, targetLine);
+      var targetInfo = getLineInfo(text, targetOffset);
+      var maxCol = Math.max(0, targetInfo.lineEnd - targetInfo.lineStart - 1);
+      setCursor(el, targetInfo.lineStart + Math.min(col, maxCol));
+      return;
+    }
+
+    var vi = findVisualLine(vLines, el.selectionStart);
+
+    // Skip if already on first/last visual line
+    if (isUp && vi === 0) return;
+    if (!isUp && vi === vLines.length - 1) return;
+
+    var targetVi = isUp
+      ? Math.max(0, vi - count)
+      : Math.min(vLines.length - 1, vi + count);
+
+    var currentVL = vLines[vi];
+    var col = el.selectionStart - currentVL.start;
+
+    var targetVL = vLines[targetVi];
+    var targetLen = targetVL.end - targetVL.start;
+    var maxCol = Math.max(0, targetLen - 1);
+    // Empty lines: maxCol should be 0
+    if (targetVL.start === targetVL.end) maxCol = 0;
+    setCursor(el, targetVL.start + Math.min(col, maxCol));
   };
 
   // ── Visual line helpers (soft-wrap aware) ────────────

@@ -61,6 +61,8 @@
     PASTE_BEFORE: 'paste_before',
     UNDO: 'undo',
     REDO: 'redo',
+    SCROLL_DOWN: 'scroll_down',
+    SCROLL_UP: 'scroll_up',
     ESCAPE: 'escape',
     REPLACE_CHAR: 'replace_char',
     DELETE_CHAR: 'delete_char',

@@ -22,6 +22,8 @@
   var matchBrackets = false;
   var tabSize = 4;
   var highlightYank = false;
+  var halfPageJump = 20;
+  var centerOnJump = false;
 
   var BRACKET_PAIRS = { '(': ')', '{': '}', '[': ']' };
   var CLOSING_BRACKETS = { ')': '(', '}': '{', ']': '[' };
@@ -188,13 +190,15 @@
   function activateElement(el) {
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
       chrome.storage.sync.get(
-        { enabled: true, startMode: 'INSERT', excludePatterns: [], matchBrackets: false, tabSize: 4, useClipboard: false, highlightYank: false },
+        { enabled: true, startMode: 'INSERT', excludePatterns: [], matchBrackets: false, tabSize: 4, useClipboard: false, highlightYank: false, halfPageJump: 20, centerOnJump: false },
         function (items) {
           enabled = items.enabled;
           excludePatterns = items.excludePatterns || [];
           matchBrackets = items.matchBrackets || false;
           tabSize = items.tabSize || 4;
           highlightYank = items.highlightYank || false;
+          halfPageJump = items.halfPageJump || 20;
+          centerOnJump = items.centerOnJump || false;
           Register.setUseClipboard(items.useClipboard || false);
           if (!enabled || isPageExcluded()) return;
 
@@ -364,6 +368,48 @@
     if ((e.ctrlKey || e.metaKey) && e.key === 'v' && engine.mode !== Mode.INSERT) {
       _blocked = true;
       killEvent(e);
+      return;
+    }
+
+    // Ctrl+D / Ctrl+U — half-page scroll jump (non-insert mode)
+    if (e.ctrlKey && (e.key === 'd' || e.key === 'u') && engine.mode !== Mode.INSERT) {
+      _blocked = true;
+      killEvent(e);
+      var scrollCmd = {
+        type: e.key === 'd' ? CommandType.SCROLL_DOWN : CommandType.SCROLL_UP,
+        count: halfPageJump,
+        center: centerOnJump,
+      };
+      handler.execute(activeElement, scrollCmd, engine);
+      if ((engine.mode === Mode.VISUAL || engine.mode === Mode.VISUAL_LINE)) {
+        if (isTextInput(activeElement)) {
+          engine.visualHead = activeElement.selectionStart;
+          var anchor = engine.visualAnchor;
+          var head = engine.visualHead;
+          if (engine.mode === Mode.VISUAL) {
+            if (head >= anchor) {
+              activeElement.selectionStart = anchor;
+              activeElement.selectionEnd = head + 1;
+            } else {
+              activeElement.selectionStart = head;
+              activeElement.selectionEnd = anchor + 1;
+            }
+          }
+        }
+        // contenteditable: handler already set cursor, just update visualHead
+      }
+      updateCursor();
+      // Center the cursor line on screen if the setting is enabled
+      if (centerOnJump) {
+        var cRect = handler.getCursorRect(activeElement,
+          (engine.mode === Mode.VISUAL || engine.mode === Mode.VISUAL_LINE) ? engine.visualHead : undefined);
+        if (cRect) {
+          var centerY = cRect.y + cRect.height / 2;
+          var screenCenter = window.innerHeight / 2;
+          window.scrollBy(0, centerY - screenCenter);
+          updateCursor(true);
+        }
+      }
       return;
     }
 
