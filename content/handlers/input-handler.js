@@ -153,7 +153,7 @@
 
   function wordEnd(text, pos) {
     var len = text.length;
-    if (pos >= len - 1) return len;
+    if (pos >= len - 1) return len - 1;
 
     pos++; // move off current char
     // Skip whitespace
@@ -162,7 +162,7 @@
     var cls = charClass(text[pos]);
     while (pos < len - 1 && charClass(text[pos + 1]) === cls) pos++;
 
-    return pos + 1; // position AFTER last char (browser cursor model)
+    return pos; // position ON last char (vim cursor model)
   }
 
   // ── Big-WORD motion helpers (W B E) ─────────────────
@@ -194,13 +194,13 @@
 
   function wordEndBig(text, pos) {
     var len = text.length;
-    if (pos >= len - 1) return len;
+    if (pos >= len - 1) return len - 1;
     pos++;
     // Skip whitespace
     while (pos < len && isWhitespace(text[pos])) pos++;
     // Skip non-whitespace
     while (pos < len - 1 && !isWhitespace(text[pos + 1])) pos++;
-    return pos + 1; // position AFTER last char (browser cursor model)
+    return pos; // position ON last char (vim cursor model)
   }
 
   // ── Find/Till helpers ─────────────────────────────────
@@ -811,10 +811,17 @@
     var pos = el.selectionStart;
     engine.visualAnchor = pos;
     engine.visualHead = pos;
-    var info = getLineInfo(el.value, pos);
-    var end = info.lineEnd;
-    if (end < el.value.length) end++;
-    setSelection(el, info.lineStart, end);
+    var vLines = getElementVisualLines(el);
+    if (vLines) {
+      var vi = findVisualLine(vLines, pos);
+      var vl = vLines[vi];
+      setSelection(el, vl.start, vl.end);
+    } else {
+      var info = getLineInfo(el.value, pos);
+      var end = info.lineEnd;
+      if (end < el.value.length) end++;
+      setSelection(el, info.lineStart, end);
+    }
   };
 
   InputHandler.prototype.extendVisualSelection = function (el, command, engine) {
@@ -844,17 +851,28 @@
     engine.visualHead = newPos;
 
     if (isLinewise) {
-      // Expand selection to full lines (include trailing \n so empty lines are covered)
-      var anchorLine = getLineInfo(text, anchor);
-      var headLine = getLineInfo(text, newPos);
-      if (newPos >= anchor) {
-        var end = headLine.lineEnd;
-        if (end < text.length) end++;
-        setSelection(el, anchorLine.lineStart, end);
+      var vLinesForLine = getElementVisualLines(el);
+      if (vLinesForLine) {
+        var anchorVi = findVisualLine(vLinesForLine, anchor);
+        var headVi = findVisualLine(vLinesForLine, newPos);
+        if (newPos >= anchor) {
+          setSelection(el, vLinesForLine[anchorVi].start, vLinesForLine[headVi].end);
+        } else {
+          setSelection(el, vLinesForLine[headVi].start, vLinesForLine[anchorVi].end);
+        }
       } else {
-        var end2 = anchorLine.lineEnd;
-        if (end2 < text.length) end2++;
-        setSelection(el, headLine.lineStart, end2);
+        // Fallback for INPUT elements (no visual lines)
+        var anchorLine = getLineInfo(text, anchor);
+        var headLine = getLineInfo(text, newPos);
+        if (newPos >= anchor) {
+          var end = headLine.lineEnd;
+          if (end < text.length) end++;
+          setSelection(el, anchorLine.lineStart, end);
+        } else {
+          var end2 = anchorLine.lineEnd;
+          if (end2 < text.length) end2++;
+          setSelection(el, headLine.lineStart, end2);
+        }
       }
     } else {
       if (newPos >= anchor) {

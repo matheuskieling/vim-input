@@ -99,12 +99,12 @@
 
   function wordEnd(text, pos) {
     var len = text.length;
-    if (pos >= len - 1) return len;
+    if (pos >= len - 1) return len - 1;
     pos++;
     while (pos < len && charClass(text[pos]) === 2) pos++;
     var cls = charClass(text[pos]);
     while (pos < len - 1 && charClass(text[pos + 1]) === cls) pos++;
-    return pos + 1;
+    return pos;
   }
 
   function isWhitespace(ch) {
@@ -129,11 +129,11 @@
 
   function wordEndBig(text, pos) {
     var len = text.length;
-    if (pos >= len - 1) return len;
+    if (pos >= len - 1) return len - 1;
     pos++;
     while (pos < len && isWhitespace(text[pos])) pos++;
     while (pos < len - 1 && !isWhitespace(text[pos + 1])) pos++;
-    return pos + 1;
+    return pos;
   }
 
   function getLineInfo(text, pos) {
@@ -759,18 +759,24 @@
     var text = getFlatText(el);
     engine.visualAnchor = pos;
     engine.visualHead = pos;
-    var info = getLineInfo(text, pos);
-    setSelectionRange(el, info.lineStart, info.lineEnd);
+    var vLines = computeCEVisualLines(el, text);
+    var vi = findCEVisualLine(vLines, pos);
+    var vl = vLines[vi];
+    setSelectionRange(el, vl.start, vl.end);
   };
 
   ContentEditableHandler.prototype.extendVisualSelection = function (el, command, engine) {
     var text = getFlatText(el);
     var anchor = engine.visualAnchor;
     var isVertical = command.motion === MotionType.LINE_UP || command.motion === MotionType.LINE_DOWN;
+    var isLinewise = engine.mode === 'VISUAL_LINE';
     var vLines = null;
 
-    if (isVertical) {
+    if (isVertical || isLinewise) {
       vLines = computeCEVisualLines(el, text);
+    }
+
+    if (isVertical) {
       if (this._desiredCol < 0) {
         var vi = findCEVisualLine(vLines, engine.visualHead);
         this._desiredCol = engine.visualHead - vLines[vi].start;
@@ -781,15 +787,14 @@
 
     var newPos = resolveMotion(text, engine.visualHead, command.motion, command.count, false, this._desiredCol, command.char, vLines);
     engine.visualHead = newPos;
-    var isLinewise = engine.mode === 'VISUAL_LINE';
 
     if (isLinewise) {
-      var anchorLine = getLineInfo(text, anchor);
-      var headLine = getLineInfo(text, newPos);
+      var anchorVi = findCEVisualLine(vLines, anchor);
+      var headVi = findCEVisualLine(vLines, newPos);
       if (newPos >= anchor) {
-        setSelectionRange(el, anchorLine.lineStart, headLine.lineEnd);
+        setSelectionRange(el, vLines[anchorVi].start, vLines[headVi].end);
       } else {
-        setSelectionRange(el, headLine.lineStart, anchorLine.lineEnd);
+        setSelectionRange(el, vLines[headVi].start, vLines[anchorVi].end);
       }
     } else {
       if (newPos >= anchor) {
