@@ -146,6 +146,15 @@ All motions support count prefixes (e.g. `3w` moves 3 words forward).
 | `;` | Repeat last `f`/`F`/`t`/`T` |
 | `,` | Repeat last `f`/`F`/`t`/`T` in reverse |
 
+#### Search
+
+| Key | Motion |
+|-----|--------|
+| `/{term}` | Search forward for `{term}` (case insensitive) |
+| `*` | Search forward for the word under cursor (whole word) |
+| `n` | Jump to next search match |
+| `N` | Jump to previous search match |
+
 #### Document
 
 | Key | Motion |
@@ -289,6 +298,7 @@ On sites where Chrome's native UI swallows the Escape key (Google Search autocom
  ┌─────────────────────────────────────────────────────┐
  │  Movement      h j k l    w b e    W B E    0 ^ $   │
  │  Find/Till     f F t T    ; ,                        │
+ │  Search        /{term}    *    n N                    │
  │  Document      gg G    Ctrl+D  Ctrl+U                │
  │                                                      │
  │  Operators     d c y    (compose with motions)       │

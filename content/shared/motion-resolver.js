@@ -330,6 +330,29 @@
           newPos = paragraphBack(text, newPos);
           break;
         }
+        case MotionType.SEARCH_NEXT: {
+          var sn = searchForward(text, newPos, window.InputVim.lastSearch);
+          if (sn !== -1) newPos = sn;
+          break;
+        }
+        case MotionType.SEARCH_PREV: {
+          var sp = searchBackward(text, newPos, window.InputVim.lastSearch);
+          if (sp !== -1) newPos = sp;
+          break;
+        }
+        case MotionType.SEARCH_WORD: {
+          if (newPos < text.length && TU.charClass(text[newPos]) === 0) {
+            var ws = newPos, we = newPos;
+            while (ws > 0 && TU.charClass(text[ws - 1]) === 0) ws--;
+            while (we < text.length - 1 && TU.charClass(text[we + 1]) === 0) we++;
+            var word = text.substring(ws, we + 1);
+            window.InputVim.lastSearch = word;
+            window.InputVim.lastSearchWholeWord = true;
+            var sw = searchForward(text, newPos, word);
+            if (sw !== -1) newPos = sw;
+          }
+          break;
+        }
       }
     }
 
@@ -337,6 +360,55 @@
       return { from: Math.min(pos, newPos), to: Math.max(pos, newPos) };
     }
     return newPos;
+  }
+
+  // ── Search helpers ──────────────────────────────────────
+
+  function isWholeWordAt(text, idx, len) {
+    var before = idx > 0 ? TU.charClass(text[idx - 1]) : -1;
+    var after = (idx + len < text.length) ? TU.charClass(text[idx + len]) : -1;
+    return before !== 0 && after !== 0;
+  }
+
+  function searchForward(text, pos, term) {
+    if (!term || text.length === 0) return -1;
+    var lower = text.toLowerCase();
+    var lTerm = term.toLowerCase();
+    var wholeWord = !!window.InputVim.lastSearchWholeWord;
+    var idx = findNextMatch(lower, text, lTerm, pos + 1, wholeWord);
+    if (idx === -1) idx = findNextMatch(lower, text, lTerm, 0, wholeWord); // wrap
+    return idx;
+  }
+
+  function searchBackward(text, pos, term) {
+    if (!term || text.length === 0) return -1;
+    var lower = text.toLowerCase();
+    var lTerm = term.toLowerCase();
+    var wholeWord = !!window.InputVim.lastSearchWholeWord;
+    var idx = findPrevMatch(lower, text, lTerm, pos - 1, wholeWord);
+    if (idx === -1) idx = findPrevMatch(lower, text, lTerm, text.length - 1, wholeWord); // wrap
+    return idx;
+  }
+
+  function findNextMatch(lowerText, origText, lTerm, from, wholeWord) {
+    var idx = from;
+    while (true) {
+      idx = lowerText.indexOf(lTerm, idx);
+      if (idx === -1) return -1;
+      if (!wholeWord || isWholeWordAt(origText, idx, lTerm.length)) return idx;
+      idx++;
+    }
+  }
+
+  function findPrevMatch(lowerText, origText, lTerm, from, wholeWord) {
+    var idx = from;
+    while (idx >= 0) {
+      idx = lowerText.lastIndexOf(lTerm, idx);
+      if (idx === -1) return -1;
+      if (!wholeWord || isWholeWordAt(origText, idx, lTerm.length)) return idx;
+      idx--;
+    }
+    return -1;
   }
 
   // ── Paragraph motion helpers ───────────────────────────

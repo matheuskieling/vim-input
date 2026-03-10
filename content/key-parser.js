@@ -39,6 +39,9 @@
     G: MotionType.DOC_END,
     '{': MotionType.PARAGRAPH_BACK,
     '}': MotionType.PARAGRAPH_FORWARD,
+    n: MotionType.SEARCH_NEXT,
+    N: MotionType.SEARCH_PREV,
+    '*': MotionType.SEARCH_WORD,
   };
 
   var OPERATOR_KEYS = {

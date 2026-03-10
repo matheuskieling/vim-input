@@ -17,6 +17,8 @@
   var _markFocusSteal = null;
   var _cmdLineActive = false;
   var _cmdLineText = '';
+  var _searchActive = false;
+  var _searchText = '';
 
   function init(engine, overlay, getActiveElement, getHandler, updateCursor, markFocusSteal) {
     _engine = engine;
@@ -177,6 +179,53 @@
       return;
     }
 
+    // Search mode key handling
+    if (_searchActive) {
+      _blocked = true;
+      killEvent(e);
+      var sKey = e.key;
+      if (sKey === 'Escape') {
+        _searchActive = false;
+        _searchText = '';
+        _overlay.hideCmdLine();
+        return;
+      }
+      if (sKey === 'Enter') {
+        var term = _searchText;
+        _searchActive = false;
+        _searchText = '';
+        _overlay.hideCmdLine();
+        if (term) {
+          window.InputVim.lastSearch = term;
+          window.InputVim.lastSearchWholeWord = false;
+          // Jump to first match forward
+          var searchCmd = { type: CommandType.MOTION, motion: window.InputVim.MotionType.SEARCH_NEXT, count: 1 };
+          if (_engine.mode === Mode.VISUAL || _engine.mode === Mode.VISUAL_LINE) {
+            handler.extendVisualSelection(el, searchCmd, _engine);
+          } else {
+            handler.execute(el, searchCmd, _engine);
+          }
+          _updateCursor();
+        }
+        return;
+      }
+      if (sKey === 'Backspace') {
+        _searchText = _searchText.substring(0, _searchText.length - 1);
+        if (_searchText.length === 0) {
+          _searchActive = false;
+          _overlay.hideCmdLine();
+        } else {
+          _overlay.showCmdLine('/' + _searchText);
+        }
+        return;
+      }
+      if (sKey.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        _searchText += sKey;
+        _overlay.showCmdLine('/' + _searchText);
+      }
+      return;
+    }
+
     // Ctrl+R in normal mode → redo
     if (e.ctrlKey && e.key === 'r' && _engine.mode !== Mode.INSERT) {
       _blocked = true;
@@ -265,6 +314,16 @@
       _cmdLineActive = true;
       _cmdLineText = '';
       _overlay.showCmdLine(':');
+      return;
+    }
+
+    // '/' activates search mode
+    if (key === '/') {
+      _blocked = true;
+      killEvent(e);
+      _searchActive = true;
+      _searchText = '';
+      _overlay.showCmdLine('/');
       return;
     }
 
