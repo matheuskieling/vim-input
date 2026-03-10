@@ -312,6 +312,12 @@
     var newPos = pos;
     var col = (desiredCol >= 0) ? desiredCol : -1;
 
+    // Pre-compute visual lines for vertical motions (avoids recomputing per count)
+    var _vLines = null;
+    if (motion === MotionType.LINE_UP || motion === MotionType.LINE_DOWN) {
+      _vLines = getElementVisualLines(el);
+    }
+
     for (var i = 0; i < count; i++) {
       switch (motion) {
         case MotionType.CHAR_LEFT: {
@@ -328,28 +334,50 @@
         }
 
         case MotionType.LINE_UP: {
-          var info = getLineInfo(text, newPos);
-          if (col < 0) col = info.col;
-          var lineNum = getLineNumber(text, newPos);
-          if (lineNum > 0) {
-            var prevLineStart = getLineStartOffset(text, lineNum - 1);
-            var prevLineInfo = getLineInfo(text, prevLineStart);
-            var maxCol = forOperator ? prevLineInfo.lineText.length : Math.max(0, prevLineInfo.lineText.length - 1);
-            newPos = prevLineStart + Math.min(col, maxCol);
+          if (_vLines) {
+            var vi = findVisualLine(_vLines, newPos);
+            if (col < 0) col = newPos - _vLines[vi].start;
+            if (vi > 0) {
+              var prev = _vLines[vi - 1];
+              var prevLen = prev.end - prev.start;
+              var maxCol = forOperator ? prevLen : Math.max(0, prevLen - 1);
+              newPos = prev.start + Math.min(col, maxCol);
+            }
+          } else {
+            var info = getLineInfo(text, newPos);
+            if (col < 0) col = info.col;
+            var lineNum = getLineNumber(text, newPos);
+            if (lineNum > 0) {
+              var prevLineStart = getLineStartOffset(text, lineNum - 1);
+              var prevLineInfo = getLineInfo(text, prevLineStart);
+              var maxCol = forOperator ? prevLineInfo.lineText.length : Math.max(0, prevLineInfo.lineText.length - 1);
+              newPos = prevLineStart + Math.min(col, maxCol);
+            }
           }
           break;
         }
 
         case MotionType.LINE_DOWN: {
-          var info2 = getLineInfo(text, newPos);
-          if (col < 0) col = info2.col;
-          var lineNum2 = getLineNumber(text, newPos);
-          var lines = getLines(text);
-          if (lineNum2 < lines.length - 1) {
-            var nextLineStart = getLineStartOffset(text, lineNum2 + 1);
-            var nextLineInfo = getLineInfo(text, nextLineStart);
-            var maxCol2 = forOperator ? nextLineInfo.lineText.length : Math.max(0, nextLineInfo.lineText.length - 1);
-            newPos = nextLineStart + Math.min(col, maxCol2);
+          if (_vLines) {
+            var vi2 = findVisualLine(_vLines, newPos);
+            if (col < 0) col = newPos - _vLines[vi2].start;
+            if (vi2 < _vLines.length - 1) {
+              var next = _vLines[vi2 + 1];
+              var nextLen = next.end - next.start;
+              var maxCol2 = forOperator ? nextLen : Math.max(0, nextLen - 1);
+              newPos = next.start + Math.min(col, maxCol2);
+            }
+          } else {
+            var info2 = getLineInfo(text, newPos);
+            if (col < 0) col = info2.col;
+            var lineNum2 = getLineNumber(text, newPos);
+            var lines = getLines(text);
+            if (lineNum2 < lines.length - 1) {
+              var nextLineStart = getLineStartOffset(text, lineNum2 + 1);
+              var nextLineInfo = getLineInfo(text, nextLineStart);
+              var maxCol2 = forOperator ? nextLineInfo.lineText.length : Math.max(0, nextLineInfo.lineText.length - 1);
+              newPos = nextLineStart + Math.min(col, maxCol2);
+            }
           }
           break;
         }
@@ -535,8 +563,14 @@
     if (isVertical) {
       // Set sticky column from current position if not already set
       if (this._desiredCol < 0) {
-        var info = getLineInfo(el.value, el.selectionStart);
-        this._desiredCol = info.col;
+        var vLines = getElementVisualLines(el);
+        if (vLines) {
+          var vi = findVisualLine(vLines, el.selectionStart);
+          this._desiredCol = el.selectionStart - vLines[vi].start;
+        } else {
+          var info = getLineInfo(el.value, el.selectionStart);
+          this._desiredCol = info.col;
+        }
       }
     } else {
       this._desiredCol = -1;
@@ -730,8 +764,14 @@
 
     if (isVertical) {
       if (this._desiredCol < 0) {
-        var headInfo = getLineInfo(text, engine.visualHead);
-        this._desiredCol = headInfo.col;
+        var vLines = getElementVisualLines(el);
+        if (vLines) {
+          var vi = findVisualLine(vLines, engine.visualHead);
+          this._desiredCol = engine.visualHead - vLines[vi].start;
+        } else {
+          var headInfo = getLineInfo(text, engine.visualHead);
+          this._desiredCol = headInfo.col;
+        }
       }
     } else {
       this._desiredCol = -1;
@@ -935,13 +975,95 @@
     }
   };
 
-  // ── Cursor rect (for overlay block cursor) ──────────
+  // ── Visual line helpers (soft-wrap aware) ────────────
 
   var _measureCanvas = null;
   function getMeasureCtx() {
     if (!_measureCanvas) _measureCanvas = document.createElement('canvas');
     return _measureCanvas.getContext('2d');
   }
+
+  function setupMeasureCtx(el) {
+    var computed = window.getComputedStyle(el);
+    var ctx = getMeasureCtx();
+    ctx.font = computed.font ||
+      (computed.fontStyle + ' ' + computed.fontVariant + ' ' +
+       computed.fontWeight + ' ' + computed.fontSize + ' ' + computed.fontFamily);
+    if (ctx.letterSpacing !== undefined) ctx.letterSpacing = computed.letterSpacing || '0px';
+    if (ctx.wordSpacing !== undefined) ctx.wordSpacing = computed.wordSpacing || '0px';
+    return ctx;
+  }
+
+  /**
+   * Computes visual line boundaries for a textarea, accounting for soft wrapping.
+   * Returns an array of { start, end } where start is inclusive and end is exclusive.
+   * Each entry represents one visual (screen) line.
+   */
+  function computeVisualLines(text, ctx, contentWidth) {
+    var lines = [];
+    var lineStart = 0;
+    var i = 0;
+
+    while (i <= text.length) {
+      if (i === text.length || text[i] === '\n') {
+        lines.push({ start: lineStart, end: i });
+        lineStart = i + 1;
+        i++;
+        continue;
+      }
+
+      var lineWidth = ctx.measureText(text.substring(lineStart, i + 1)).width;
+
+      if (lineWidth > contentWidth && i > lineStart && text[i] !== ' ' && text[i] !== '\t') {
+        var wrapAt = i;
+        for (var j = i - 1; j > lineStart; j--) {
+          if (text[j] === ' ' || text[j] === '\t') {
+            wrapAt = j + 1;
+            break;
+          }
+        }
+        lines.push({ start: lineStart, end: wrapAt });
+        lineStart = wrapAt;
+        i = wrapAt;
+        continue;
+      }
+
+      i++;
+    }
+
+    if (lines.length === 0) lines.push({ start: 0, end: 0 });
+    return lines;
+  }
+
+  /** Find the index of the visual line containing pos. */
+  function findVisualLine(vLines, pos) {
+    for (var i = 0; i < vLines.length; i++) {
+      var vl = vLines[i];
+      // Empty lines (from \n\n) have start === end; match exactly
+      if (vl.start === vl.end) {
+        if (pos === vl.start) return i;
+        continue;
+      }
+      if (pos >= vl.start &&
+          (pos < vl.end || (i === vLines.length - 1 && pos <= vl.end))) {
+        return i;
+      }
+    }
+    return vLines.length - 1;
+  }
+
+  /** Get visual lines for an element (returns null for inputs). */
+  function getElementVisualLines(el) {
+    if (el.tagName === 'INPUT') return null;
+    var computed = window.getComputedStyle(el);
+    var paddingLeft = parseFloat(computed.paddingLeft) || 0;
+    var paddingRight = parseFloat(computed.paddingRight) || 0;
+    var contentWidth = el.clientWidth - paddingLeft - paddingRight;
+    var ctx = setupMeasureCtx(el);
+    return computeVisualLines(el.value, ctx, contentWidth);
+  }
+
+  // ── Cursor rect (for overlay block cursor) ──────────
 
   function getCaretCoordinates(el, position) {
     var computed = window.getComputedStyle(el);
@@ -956,76 +1078,26 @@
     var lineHeight = parseFloat(computed.lineHeight);
     if (isNaN(lineHeight)) lineHeight = Math.ceil(fontSize * 1.2);
 
-    var ctx = getMeasureCtx();
-    ctx.font = computed.font ||
-      (computed.fontStyle + ' ' + computed.fontVariant + ' ' +
-       computed.fontWeight + ' ' + computed.fontSize + ' ' + computed.fontFamily);
-    if (ctx.letterSpacing !== undefined) ctx.letterSpacing = computed.letterSpacing || '0px';
-    if (ctx.wordSpacing !== undefined) ctx.wordSpacing = computed.wordSpacing || '0px';
-
+    var ctx = setupMeasureCtx(el);
     var text = el.value;
     var offsetX = paddingLeft + borderLeft;
     var offsetY = paddingTop + borderTop;
 
-    // Single-line inputs don't wrap
     if (isInput) {
       var ix = ctx.measureText(text.substring(0, position)).width;
       var iw = position < text.length ? ctx.measureText(text[position]).width : fontSize * 0.6;
       return { top: offsetY, left: ix + offsetX, width: iw, height: lineHeight };
     }
 
-    // Textarea: simulate wrapping using canvas text measurement
     var contentWidth = el.clientWidth - paddingLeft - paddingRight;
-    var row = 0;
-    var lineStart = 0;
-    var i = 0;
+    var vLines = computeVisualLines(text, ctx, contentWidth);
+    var vi = findVisualLine(vLines, position);
+    var vl = vLines[vi];
 
-    while (i <= text.length) {
-      if (i === text.length || text[i] === '\n') {
-        // Hard break or end of text — position is on this visual line
-        if (position >= lineStart && position <= i) {
-          var x = ctx.measureText(text.substring(lineStart, position)).width;
-          var w = (position < text.length && text[position] !== '\n')
-            ? ctx.measureText(text[position]).width : fontSize * 0.6;
-          return { top: row * lineHeight + offsetY, left: x + offsetX, width: w, height: lineHeight };
-        }
-        row++;
-        lineStart = i + 1;
-        i++;
-        continue;
-      }
-
-      // Check if adding character i overflows the visual line
-      var lineWidth = ctx.measureText(text.substring(lineStart, i + 1)).width;
-
-      if (lineWidth > contentWidth && i > lineStart && text[i] !== ' ' && text[i] !== '\t') {
-        // Non-whitespace overflow — find last space to wrap at
-        var wrapAt = i; // default: character-level break
-        for (var j = i - 1; j > lineStart; j--) {
-          if (text[j] === ' ' || text[j] === '\t') {
-            wrapAt = j + 1;
-            break;
-          }
-        }
-
-        // Check if position falls on the line we just completed
-        if (position >= lineStart && position < wrapAt) {
-          var x2 = ctx.measureText(text.substring(lineStart, position)).width;
-          var w2 = ctx.measureText(text[position]).width;
-          return { top: row * lineHeight + offsetY, left: x2 + offsetX, width: w2, height: lineHeight };
-        }
-
-        row++;
-        lineStart = wrapAt;
-        i = wrapAt; // re-check from new visual line start
-        continue;
-      }
-
-      i++;
-    }
-
-    // Fallback
-    return { top: offsetY, left: offsetX, width: fontSize * 0.6, height: lineHeight };
+    var x = ctx.measureText(text.substring(vl.start, position)).width;
+    var w = (position < text.length && text[position] !== '\n')
+      ? ctx.measureText(text[position]).width : fontSize * 0.6;
+    return { top: vi * lineHeight + offsetY, left: x + offsetX, width: w, height: lineHeight };
   }
 
   InputHandler.prototype.getCursorRect = function (el, overridePos) {
