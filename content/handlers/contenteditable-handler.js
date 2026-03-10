@@ -523,6 +523,38 @@
     var isVertical = command.motion === MotionType.LINE_UP || command.motion === MotionType.LINE_DOWN;
 
     if (isVertical) {
+      console.log('[InputVim CE] j/k motion:', command.motion === MotionType.LINE_DOWN ? 'DOWN' : 'UP');
+      console.log('[InputVim CE] flatText length:', text.length);
+      console.log('[InputVim CE] flatText (first 200 chars):', JSON.stringify(text.substring(0, 200)));
+      console.log('[InputVim CE] current pos:', pos);
+      var debugInfo = getLineInfo(text, pos);
+      console.log('[InputVim CE] lineInfo:', JSON.stringify(debugInfo));
+      console.log('[InputVim CE] lineNumber:', getLineNumber(text, pos));
+      console.log('[InputVim CE] total logical lines:', text.split('\n').length);
+      console.log('[InputVim CE] has newlines:', text.indexOf('\n') !== -1);
+      console.log('[InputVim CE] desiredCol before:', this._desiredCol);
+
+      // Log element dimensions to check if soft-wrap is happening
+      var elRect = el.getBoundingClientRect();
+      var computed = window.getComputedStyle(el);
+      console.log('[InputVim CE] element width:', elRect.width, 'height:', elRect.height);
+      console.log('[InputVim CE] whiteSpace:', computed.whiteSpace);
+      console.log('[InputVim CE] wordWrap:', computed.wordWrap);
+      console.log('[InputVim CE] overflowWrap:', computed.overflowWrap);
+
+      // Try to detect visual lines via Range measurement
+      try {
+        var sel = window.getSelection();
+        if (sel.rangeCount) {
+          var range = sel.getRangeAt(0).cloneRange();
+          range.collapse(true);
+          var cursorRect = range.getBoundingClientRect();
+          console.log('[InputVim CE] cursor rect:', JSON.stringify({ x: cursorRect.left, y: cursorRect.top }));
+        }
+      } catch (e) {
+        console.log('[InputVim CE] could not get cursor rect:', e.message);
+      }
+
       if (this._desiredCol < 0) {
         var info = getLineInfo(text, pos);
         this._desiredCol = info.col;
@@ -533,11 +565,20 @@
 
     var newPos = resolveMotion(text, pos, command.motion, command.count, false, this._desiredCol, command.char);
 
+    if (isVertical) {
+      console.log('[InputVim CE] newPos after resolveMotion:', newPos);
+      console.log('[InputVim CE] position changed:', pos !== newPos);
+    }
+
     // Normal-mode clamp: cursor must be ON a character, not past the last one
     if (text.length > 0) {
       var li = getLineInfo(text, newPos);
       var maxPos = li.lineEnd > li.lineStart ? li.lineEnd - 1 : li.lineStart;
       if (newPos > maxPos) newPos = maxPos;
+    }
+
+    if (isVertical) {
+      console.log('[InputVim CE] final newPos (after clamp):', newPos);
     }
 
     setCursorAt(el, newPos);
