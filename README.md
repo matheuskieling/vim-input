@@ -16,6 +16,15 @@
 
 ---
 
+## Limitations
+
+- **Complex input fields**: Some web applications use heavily customized input components that go beyond standard `<input>`, `<textarea>`, or `contenteditable` elements. Examples include Jira's description field, Slack's message composer, and similar rich editors built with custom frameworks. The extension may not work correctly (or at all) in these cases.
+- **Unsupported input types**: Chrome restricts selection API access on `<input type="email">` and `<input type="number">`, so the extension cannot operate on these fields.
+- **Line wrapping**: There is partial support for navigating visually wrapped lines (e.g., `j`/`k` moving within a wrapped line), but it does not work reliably in all cases.
+- **No active maintenance**: This project was built for my own personal use and is shared as-is for anyone who might find it useful in their workflow. There are no plans for ongoing maintenance, feature requests, or bug fixes.
+
+---
+
 ## Why
 
 Browser inputs are painful for anyone used to Vim. Moving by word, deleting to end of line, or selecting a paragraph all require reaching for the mouse or memorizing OS-specific shortcuts. Input Vim drops a lightweight Vim layer on top of any text field so you can stay on the home row.
