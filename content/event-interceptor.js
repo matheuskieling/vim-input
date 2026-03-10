@@ -7,6 +7,7 @@
 
   var BRACKET_PAIRS = { '(': ')', '{': '}', '[': ']' };
   var CLOSING_BRACKETS = { ')': '(', '}': '{', ']': '[' };
+  var QUOTE_PAIRS = { '"': '"', "'": "'", '`': '`' };
 
   var _blocked = false;
   var _engine = null;
@@ -303,6 +304,17 @@
           killEvent(e);
           return;
         }
+      }
+      if (Settings.get('matchBrackets') && QUOTE_PAIRS[key]) {
+        if (!skipClosingBracket(el, key)) {
+          _blocked = true;
+          killEvent(e);
+          insertBracketPair(el, key, key);
+          return;
+        }
+        _blocked = true;
+        killEvent(e);
+        return;
       }
       if (key !== 'Escape') return;
     }
