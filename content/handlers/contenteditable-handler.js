@@ -740,14 +740,38 @@
     setSelectionRange(el, pos, pos + 1);
   };
 
+  // Set a linewise selection from startVi to endVi (visual line indices).
+  // Selects entire block elements at the parent level so that delete removes them fully.
+  function _setLinewiseSelection(el, startVi, endVi, vLines) {
+    var startLine = vLines[startVi];
+    var endLine = vLines[endVi];
+
+    var startBInfo = _blockForPos(el, startLine.start);
+    var endBInfo = _blockForPos(el, endLine.start);
+
+    // Use block-level selection when blocks are direct children of el
+    if (startBInfo && endBInfo &&
+        startBInfo.block !== el && endBInfo.block !== el &&
+        startBInfo.block.parentNode === el && endBInfo.block.parentNode === el) {
+      var sel = window.getSelection();
+      var range = document.createRange();
+      range.setStartBefore(startBInfo.block);
+      range.setEndAfter(endBInfo.block);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } else {
+      // Fallback for plain text (no block children)
+      setSelectionRange(el, startLine.start, endLine.end);
+    }
+  }
+
   ContentEditableHandler.prototype._doVisualLineEnter = function (el, pos, engine) {
     var text = getFlatText(el);
     engine.visualAnchor = pos;
     engine.visualHead = pos;
     var vLines = computeCEVisualLines(el, text);
     var vi = TU.findVisualLine(vLines, pos);
-    var vl = vLines[vi];
-    setSelectionRange(el, vl.start, vl.end);
+    _setLinewiseSelection(el, vi, vi, vLines);
   };
 
   ContentEditableHandler.prototype.extendVisualSelection = function (el, command, engine) {
@@ -777,9 +801,9 @@
       var anchorVi = TU.findVisualLine(vLines, anchor);
       var headVi = TU.findVisualLine(vLines, newPos);
       if (newPos >= anchor) {
-        setSelectionRange(el, vLines[anchorVi].start, vLines[headVi].end);
+        _setLinewiseSelection(el, anchorVi, headVi, vLines);
       } else {
-        setSelectionRange(el, vLines[headVi].start, vLines[anchorVi].end);
+        _setLinewiseSelection(el, headVi, anchorVi, vLines);
       }
     } else {
       if (newPos >= anchor) {
