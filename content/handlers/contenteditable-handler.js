@@ -1263,6 +1263,19 @@
     }, 200);
   };
 
+  // ── Mouse selection detection ─────────────────────
+
+  ContentEditableHandler.prototype.getMouseSelection = function (el) {
+    var sel = window.getSelection();
+    if (!sel.rangeCount || sel.isCollapsed) return null;
+    var anchorFlat = _flatOffsetAt(el, sel.anchorNode, sel.anchorOffset);
+    var focusFlat = _flatOffsetAt(el, sel.focusNode, sel.focusOffset);
+    if (anchorFlat <= focusFlat) {
+      return { anchor: anchorFlat, head: focusFlat - 1 };
+    }
+    return { anchor: anchorFlat - 1, head: focusFlat };
+  };
+
   window.InputVim = window.InputVim || {};
   window.InputVim.ContentEditableHandler = ContentEditableHandler;
 })();

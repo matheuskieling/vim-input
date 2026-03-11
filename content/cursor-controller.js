@@ -29,6 +29,25 @@
       setTimeout(function () {
         var el2 = _getActiveElement();
         if (!el2 || _engine.mode === Mode.INSERT) return;
+
+        var handler = _getHandler(el2);
+        if (handler && handler.getMouseSelection) {
+          var sel = handler.getMouseSelection(el2);
+          if (sel) {
+            _engine.visualAnchor = sel.anchor;
+            _engine.visualHead = sel.head;
+            if (_engine.mode !== Mode.VISUAL) {
+              _engine.setMode(Mode.VISUAL);
+            }
+            update();
+            return;
+          }
+        }
+
+        // No selection — exit visual if was in visual mode
+        if (_engine.mode === Mode.VISUAL || _engine.mode === Mode.VISUAL_LINE) {
+          _engine.setMode(Mode.NORMAL);
+        }
         clampCursorToLine(el2);
         update();
       }, 0);

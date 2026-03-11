@@ -819,6 +819,20 @@
     }, 200);
   };
 
+  // ── Mouse selection detection ─────────────────────
+
+  InputHandler.prototype.getMouseSelection = function (el) {
+    try {
+      if (el.selectionStart === el.selectionEnd) return null;
+      if (el.selectionDirection === 'backward') {
+        return { anchor: el.selectionEnd - 1, head: el.selectionStart };
+      }
+      return { anchor: el.selectionStart, head: el.selectionEnd - 1 };
+    } catch (e) {
+      return null;
+    }
+  };
+
   // ── Expose ──────────────────────────────────────────
 
   window.InputVim = window.InputVim || {};
