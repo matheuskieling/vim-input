@@ -9,46 +9,299 @@
   var TU = window.InputVim.TextUtils;
   var MR = window.InputVim.MotionResolver;
 
+  // ── Block detection helpers ───────────────────────
+
+  var BLOCK_TAGS = {
+    P:1, DIV:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1,
+    LI:1, UL:1, OL:1, BLOCKQUOTE:1, PRE:1, SECTION:1,
+    ARTICLE:1, ASIDE:1, HEADER:1, FOOTER:1, NAV:1,
+    MAIN:1, FIGURE:1, FIGCAPTION:1, TABLE:1, TR:1, TD:1, TH:1,
+    DD:1, DT:1, DL:1, DETAILS:1, SUMMARY:1, ADDRESS:1
+  };
+
+  function _isBlock(node) {
+    return node.nodeType === 1 && !!BLOCK_TAGS[node.tagName];
+  }
+
+  // A BR is a placeholder if nothing meaningful follows it in its parent
+  function _isPlaceholderBR(br) {
+    var next = br.nextSibling;
+    while (next) {
+      if (next.nodeType === 3 && next.textContent.length > 0) return false;
+      if (next.nodeType === 1) return false;
+      next = next.nextSibling;
+    }
+    return true;
+  }
+
+  // Get text content of a single block, treating placeholder BRs as empty
+  function _blockText(block) {
+    if (block.nodeType === 3) return block.textContent;
+    var parts = [];
+    function walk(node) {
+      var child = node.firstChild;
+      while (child) {
+        if (child.nodeType === 3) {
+          parts.push(child.textContent);
+        } else if (child.nodeName === 'BR') {
+          if (!_isPlaceholderBR(child)) parts.push('\n');
+        } else if (child.nodeType === 1 && child.nodeName !== 'BR') {
+          walk(child);
+        }
+        child = child.nextSibling;
+      }
+    }
+    walk(block);
+    return parts.join('');
+  }
+
+  // Get the direct block (or text node) children of el
+  function _getBlocks(el) {
+    var hasBlock = false;
+    var child = el.firstChild;
+    while (child) {
+      if (_isBlock(child)) { hasBlock = true; break; }
+      child = child.nextSibling;
+    }
+    if (!hasBlock) return [el]; // treat el as single block (plain text case)
+
+    var blocks = [];
+    child = el.firstChild;
+    while (child) {
+      if (child.nodeType === 1 || (child.nodeType === 3 && child.textContent.trim())) {
+        blocks.push(child);
+      }
+      child = child.nextSibling;
+    }
+    return blocks.length ? blocks : [el];
+  }
+
+  function _childIdx(node) {
+    var i = 0;
+    var n = node.parentNode.firstChild;
+    while (n && n !== node) { i++; n = n.nextSibling; }
+    return i;
+  }
+
   // ── Flat text helpers ───────────────────────────────
 
   function getFlatText(el) {
-    var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
-    var text = '';
-    var node;
-    while ((node = walker.nextNode())) {
-      text += node.textContent;
+    var blocks = _getBlocks(el);
+    var parts = [];
+    var blockDebug = [];
+    for (var i = 0; i < blocks.length; i++) {
+      var bt = _blockText(blocks[i]);
+      parts.push(bt);
+      blockDebug.push({
+        idx: i,
+        tag: blocks[i].nodeName,
+        innerHTML: blocks[i].innerHTML ? blocks[i].innerHTML.substring(0, 60) : '(text)',
+        blockText: JSON.stringify(bt),
+        blockTextLen: bt.length,
+      });
     }
-    return text;
+    var result = parts.join('\n');
+    console.log('[CE-DEBUG getFlatText]', {
+      blockCount: blocks.length,
+      blocks: blockDebug,
+      flatText: JSON.stringify(result),
+      flatTextLen: result.length,
+    });
+    return result;
+  }
+
+  // Count characters in a node using our flat text model
+  function _countChars(node) {
+    if (node.nodeType === 3) return node.textContent.length;
+    if (node.nodeName === 'BR') return _isPlaceholderBR(node) ? 0 : 1;
+    var count = 0;
+    var child = node.firstChild;
+    while (child) {
+      count += _countChars(child);
+      child = child.nextSibling;
+    }
+    return count;
+  }
+
+  // Count flat offset from start of a block to a DOM position within it
+  function _offsetInBlock(block, targetNode, targetOff) {
+    if (block.nodeType === 3) {
+      return targetNode === block ? Math.min(targetOff, block.textContent.length) : 0;
+    }
+
+    // If target is the block itself, count children up to targetOff
+    if (targetNode === block) {
+      var offset = 0;
+      for (var i = 0; i < targetOff && i < block.childNodes.length; i++) {
+        offset += _countChars(block.childNodes[i]);
+      }
+      return offset;
+    }
+
+    // Walk to find target
+    var result = { offset: 0, done: false };
+    function walk(container) {
+      if (result.done) return;
+      var child = container.firstChild;
+      while (child && !result.done) {
+        if (child === targetNode) {
+          if (child.nodeType === 3) {
+            result.offset += Math.min(targetOff, child.textContent.length);
+          } else {
+            for (var j = 0; j < targetOff && j < child.childNodes.length; j++) {
+              result.offset += _countChars(child.childNodes[j]);
+            }
+          }
+          result.done = true;
+          return;
+        }
+        if (child.nodeType === 1 && child.contains && child.contains(targetNode)) {
+          walk(child);
+          return;
+        }
+        result.offset += _countChars(child);
+        child = child.nextSibling;
+      }
+    }
+    walk(block);
+    return result.offset;
+  }
+
+  // Compute flat offset for a given DOM position
+  function _flatOffsetAt(el, targetNode, targetOff) {
+    var blocks = _getBlocks(el);
+    var flatPos = 0;
+
+    for (var i = 0; i < blocks.length; i++) {
+      if (i > 0) flatPos++;
+      var block = blocks[i];
+
+      if (block === targetNode || (block.contains && block.contains(targetNode))) {
+        return flatPos + _offsetInBlock(block, targetNode, targetOff);
+      }
+
+      flatPos += _blockText(block).length;
+    }
+
+    // Container-level position (between blocks)
+    if (targetNode === el) {
+      flatPos = 0;
+      for (var j = 0; j < blocks.length; j++) {
+        if (j > 0) flatPos++;
+        if (_childIdx(blocks[j]) >= targetOff) return flatPos;
+        flatPos += _blockText(blocks[j]).length;
+      }
+    }
+
+    return flatPos;
   }
 
   function flatOffsetFromSelection(el) {
     var sel = window.getSelection();
     if (!sel.rangeCount) return 0;
     var range = sel.getRangeAt(0);
-    var preRange = document.createRange();
-    preRange.selectNodeContents(el);
-    preRange.setEnd(range.startContainer, range.startOffset);
-    return preRange.toString().length;
+    var result = _flatOffsetAt(el, range.startContainer, range.startOffset);
+    console.log('[CE-DEBUG flatOffsetFromSelection]', {
+      startContainer: range.startContainer.nodeName,
+      startContainerText: range.startContainer.nodeType === 3 ? JSON.stringify(range.startContainer.textContent.substring(0, 40)) : range.startContainer.innerHTML ? range.startContainer.innerHTML.substring(0, 40) : '?',
+      startOffset: range.startOffset,
+      result: result,
+    });
+    return result;
+  }
+
+  // Find DOM position for a flat offset within a block
+  function _domPosInBlock(block, localOffset) {
+    if (block.nodeType === 3) {
+      return { node: block, offset: Math.min(localOffset, block.textContent.length) };
+    }
+
+    if (localOffset === 0) {
+      var walker = document.createTreeWalker(block, NodeFilter.SHOW_ALL, null, false);
+      var n;
+      while ((n = walker.nextNode())) {
+        if (n.nodeType === 3) return { node: n, offset: 0 };
+        if (n.nodeName === 'BR') return { node: n.parentNode, offset: _childIdx(n) };
+      }
+      return { node: block, offset: 0 };
+    }
+
+    // Walk content to find the position
+    var remaining = localOffset;
+    var result = null;
+
+    function walk(container) {
+      if (result) return;
+      var child = container.firstChild;
+      while (child && !result) {
+        if (child.nodeType === 3) {
+          if (remaining <= child.textContent.length) {
+            result = { node: child, offset: remaining };
+            return;
+          }
+          remaining -= child.textContent.length;
+        } else if (child.nodeName === 'BR') {
+          if (!_isPlaceholderBR(child)) {
+            if (remaining === 0) {
+              result = { node: child.parentNode, offset: _childIdx(child) + 1 };
+              return;
+            }
+            remaining--;
+          }
+        } else if (child.nodeType === 1) {
+          walk(child);
+        }
+        child = child.nextSibling;
+      }
+    }
+    walk(block);
+
+    if (result) return result;
+
+    // Past end of block
+    var lastWalker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null, false);
+    var last = null, node;
+    while ((node = lastWalker.nextNode())) last = node;
+    if (last) return { node: last, offset: last.textContent.length };
+    return { node: block, offset: block.childNodes.length };
   }
 
   function selectionFromFlatOffset(el, offset) {
-    var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
-    var remaining = offset;
-    var node;
-    while ((node = walker.nextNode())) {
-      if (remaining <= node.textContent.length) {
-        return { node: node, offset: remaining };
-      }
-      remaining -= node.textContent.length;
+    var blocks = _getBlocks(el);
+
+    if (offset <= 0 && blocks.length > 0) {
+      return _domPosInBlock(blocks[0], 0);
     }
-    var lastNode = el;
-    while (lastNode.lastChild) lastNode = lastNode.lastChild;
-    var len = lastNode.textContent ? lastNode.textContent.length : 0;
-    return { node: lastNode, offset: len };
+
+    var flatPos = 0;
+    for (var i = 0; i < blocks.length; i++) {
+      if (i > 0) flatPos++;
+      var block = blocks[i];
+      var blockLen = _blockText(block).length;
+
+      if (offset <= flatPos + blockLen) {
+        return _domPosInBlock(block, offset - flatPos);
+      }
+
+      flatPos += blockLen;
+    }
+
+    // Past end — return end of last block
+    if (blocks.length > 0) {
+      var lastBlock = blocks[blocks.length - 1];
+      return _domPosInBlock(lastBlock, _blockText(lastBlock).length);
+    }
+    return { node: el, offset: 0 };
   }
 
   function setCursorAt(el, flatOffset) {
     var point = selectionFromFlatOffset(el, flatOffset);
+    console.log('[CE-DEBUG setCursorAt]', {
+      flatOffset: flatOffset,
+      pointNode: point.node.nodeName,
+      pointNodeText: point.node.nodeType === 3 ? JSON.stringify(point.node.textContent.substring(0, 40)) : point.node.innerHTML ? point.node.innerHTML.substring(0, 40) : '?',
+      pointOffset: point.offset,
+    });
     var sel = window.getSelection();
     var range = document.createRange();
     range.setStart(point.node, point.offset);
@@ -68,47 +321,112 @@
     sel.addRange(range);
   }
 
+  // ── Mutation helpers (execCommand with fallback) ────
+
+  function _execCmd(cmd, value) {
+    try {
+      return document.execCommand(cmd, false, value);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function deleteRange(el, from, to) {
+    setSelectionRange(el, from, to);
+    if (!_execCmd('delete')) {
+      var text = getFlatText(el);
+      el.textContent = text.substring(0, from) + text.substring(to);
+    }
+  }
+
+  function insertTextAt(el, offset, str) {
+    setCursorAt(el, offset);
+    if (!_execCmd('insertText', str)) {
+      var text = getFlatText(el);
+      el.textContent = text.substring(0, offset) + str + text.substring(offset);
+    }
+    setCursorAt(el, offset + str.length);
+  }
+
+  function insertParagraphAt(el, offset) {
+    setCursorAt(el, offset);
+    if (!_execCmd('insertParagraph')) {
+      var text = getFlatText(el);
+      el.textContent = text.substring(0, offset) + '\n' + text.substring(offset);
+    }
+  }
+
   // ── Visual line helpers for contenteditable ────────────
 
   function computeCEVisualLines(el, text) {
     if (text.length === 0) return [{ start: 0, end: 0 }];
 
+    var blocks = _getBlocks(el);
     var lines = [];
-    var lineStart = 0;
-    var lastTop = -1;
-    var tolerance = 2;
+    var flatPos = 0;
 
-    var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
-    var node;
-    var range = document.createRange();
-    var flatIdx = 0;
+    for (var bi = 0; bi < blocks.length; bi++) {
+      if (bi > 0) flatPos++; // \n separator between blocks
+      var block = blocks[bi];
+      var blockLen = _blockText(block).length;
 
-    while ((node = walker.nextNode())) {
-      var content = node.textContent;
-      for (var i = 0; i < content.length; i++) {
-        if (content[i] === '\n') {
-          lines.push({ start: lineStart, end: flatIdx });
-          lineStart = flatIdx + 1;
-          lastTop = -1;
-          flatIdx++;
-          continue;
+      if (blockLen === 0) {
+        // Empty block — one empty visual line
+        lines.push({ start: flatPos, end: flatPos });
+      } else {
+        // Walk text in block, checking for soft wraps
+        var blockStart = flatPos;
+        var lineStart = flatPos;
+        var lastTop = -1;
+        var tolerance = 2;
+        var localOffset = 0;
+
+        var walker = document.createTreeWalker(block, NodeFilter.SHOW_ALL, null, false);
+        var node;
+        var range = document.createRange();
+
+        while ((node = walker.nextNode())) {
+          if (node.nodeType === 3) {
+            var content = node.textContent;
+            for (var ci = 0; ci < content.length; ci++) {
+              var flatIdx = blockStart + localOffset;
+
+              if (content[ci] === '\n') {
+                lines.push({ start: lineStart, end: flatIdx });
+                lineStart = flatIdx + 1;
+                lastTop = -1;
+                localOffset++;
+                continue;
+              }
+
+              range.setStart(node, ci);
+              range.setEnd(node, ci + 1);
+              var rect = range.getBoundingClientRect();
+
+              if (rect.height > 0 && lastTop >= 0 && rect.top - lastTop > tolerance) {
+                lines.push({ start: lineStart, end: flatIdx });
+                lineStart = flatIdx;
+              }
+
+              if (rect.height > 0) lastTop = rect.top;
+              localOffset++;
+            }
+          } else if (node.nodeName === 'BR' && !_isPlaceholderBR(node)) {
+            var flatIdx2 = blockStart + localOffset;
+            lines.push({ start: lineStart, end: flatIdx2 });
+            lineStart = flatIdx2 + 1;
+            lastTop = -1;
+            localOffset++;
+          }
         }
 
-        range.setStart(node, i);
-        range.setEnd(node, i + 1);
-        var rect = range.getBoundingClientRect();
-
-        if (rect.height > 0 && lastTop >= 0 && rect.top - lastTop > tolerance) {
-          lines.push({ start: lineStart, end: flatIdx });
-          lineStart = flatIdx;
-        }
-
-        if (rect.height > 0) lastTop = rect.top;
-        flatIdx++;
+        lines.push({ start: lineStart, end: flatPos + blockLen });
       }
+
+      flatPos += blockLen;
     }
 
-    lines.push({ start: lineStart, end: text.length });
+    if (lines.length === 0) lines.push({ start: 0, end: text.length });
     return lines;
   }
 
@@ -230,6 +548,14 @@
         var vi = TU.findVisualLine(vLines, pos);
         this._desiredCol = pos - vLines[vi].start;
       }
+      console.log('[CE-DEBUG _doMotion]', {
+        motion: command.motion,
+        pos: pos,
+        textLen: text.length,
+        flatText: JSON.stringify(text),
+        desiredCol: this._desiredCol,
+        vLines: JSON.stringify(vLines),
+      });
     } else {
       this._desiredCol = -1;
     }
@@ -240,6 +566,13 @@
       var li = TU.getLineInfo(text, newPos);
       var maxPos = li.lineEnd > li.lineStart ? li.lineEnd - 1 : li.lineStart;
       if (newPos > maxPos) newPos = maxPos;
+    }
+
+    if (isVertical) {
+      console.log('[CE-DEBUG _doMotion result]', {
+        newPos: newPos,
+        charAtNewPos: text[newPos],
+      });
     }
 
     setCursorAt(el, newPos);
@@ -271,8 +604,7 @@
     this._saveUndo(el);
     Register.set(deleted, regType);
 
-    var newText = text.substring(0, range.from) + text.substring(range.to);
-    el.textContent = newText;
+    deleteRange(el, range.from, range.to);
     setCursorAt(el, range.from);
     TU.fireInputEvent(el);
   };
@@ -293,8 +625,7 @@
     this._saveUndo(el);
     Register.set(deleted, 'char');
 
-    var newText = text.substring(0, range.from) + text.substring(range.to);
-    el.textContent = newText;
+    deleteRange(el, range.from, range.to);
     setCursorAt(el, range.from);
     TU.fireInputEvent(el);
   };
@@ -322,16 +653,27 @@
     this._saveUndo(el);
     Register.set(deleted, 'line');
 
-    var before = text.substring(0, startOffset);
-    var after = text.substring(endOffset);
-    if (before.length > 0 && before[before.length - 1] === '\n' && after.length === 0) {
-      before = before.substring(0, before.length - 1);
+    var delFrom = startOffset;
+    var delTo = endOffset;
+    if (delFrom > 0 && text[delFrom - 1] === '\n' && delTo >= text.length) {
+      delFrom--;
     }
 
-    el.textContent = before + after;
-    setCursorAt(el, Math.min(startOffset, (before + after).length));
+    deleteRange(el, delFrom, delTo);
+    var newText = getFlatText(el);
+    setCursorAt(el, Math.min(delFrom, newText.length));
     TU.fireInputEvent(el);
   };
+
+  // Find the direct child block element of el that contains the cursor
+  function _findContainingBlock(el, pos) {
+    var point = selectionFromFlatOffset(el, pos);
+    var node = point.node;
+    while (node && node !== el && node.parentNode !== el) {
+      node = node.parentNode;
+    }
+    return (node && node !== el) ? node : null;
+  }
 
   ContentEditableHandler.prototype._doInsertEnter = function (el, text, pos, command) {
     this._saveUndo(el);
@@ -350,16 +692,45 @@
       case InsertEntry.A_UPPER:
         setCursorAt(el, info.lineEnd);
         break;
-      case InsertEntry.O_LOWER:
-        el.textContent = text.substring(0, info.lineEnd) + '\n' + text.substring(info.lineEnd);
-        setCursorAt(el, info.lineEnd + 1);
+      case InsertEntry.O_LOWER: {
+        var block = _findContainingBlock(el, pos);
+        if (block) {
+          var sel = window.getSelection();
+          var r = document.createRange();
+          r.selectNodeContents(block);
+          r.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(r);
+          if (!_execCmd('insertParagraph')) {
+            insertParagraphAt(el, info.lineEnd);
+          }
+        } else {
+          insertParagraphAt(el, info.lineEnd);
+        }
+        var newText = getFlatText(el);
+        setCursorAt(el, Math.min(info.lineEnd + 1, newText.length));
         TU.fireInputEvent(el);
         break;
-      case InsertEntry.O_UPPER:
-        el.textContent = text.substring(0, info.lineStart) + '\n' + text.substring(info.lineStart);
+      }
+      case InsertEntry.O_UPPER: {
+        var block2 = _findContainingBlock(el, pos);
+        if (block2) {
+          var sel2 = window.getSelection();
+          var r2 = document.createRange();
+          r2.selectNodeContents(block2);
+          r2.collapse(true);
+          sel2.removeAllRanges();
+          sel2.addRange(r2);
+          if (!_execCmd('insertParagraph')) {
+            insertParagraphAt(el, info.lineStart);
+          }
+        } else {
+          insertParagraphAt(el, info.lineStart);
+        }
         setCursorAt(el, info.lineStart);
         TU.fireInputEvent(el);
         break;
+      }
     }
   };
 
@@ -436,12 +807,10 @@
 
     if (command.operator === OperatorType.YANK) {
       Register.set(selected, regType);
-      var pos = flatOffsetFromSelection(el);
-      var preRange = document.createRange();
-      preRange.selectNodeContents(el);
-      preRange.setEnd(sel.getRangeAt(0).startContainer, sel.getRangeAt(0).startOffset);
-      this._lastYankFrom = preRange.toString().length;
+      var selRange = sel.getRangeAt(0);
+      this._lastYankFrom = _flatOffsetAt(el, selRange.startContainer, selRange.startOffset);
       this._lastYankTo = this._lastYankFrom + selected.length;
+      var pos = flatOffsetFromSelection(el);
       setCursorAt(el, pos);
       return;
     }
@@ -449,8 +818,10 @@
     this._saveUndo(el);
     Register.set(selected, regType);
 
-    var range = sel.getRangeAt(0);
-    range.deleteContents();
+    if (!_execCmd('delete')) {
+      var range = sel.getRangeAt(0);
+      range.deleteContents();
+    }
     TU.fireInputEvent(el);
   };
 
@@ -463,22 +834,21 @@
     if (reg.type === 'line') {
       var info = TU.getLineInfo(text, pos);
       var content = reg.content;
-      if (content[content.length - 1] !== '\n') content += '\n';
+      if (content[content.length - 1] === '\n') content = content.substring(0, content.length - 1);
       if (before) {
-        var newText = text.substring(0, info.lineStart) + content + text.substring(info.lineStart);
-        el.textContent = newText;
+        insertParagraphAt(el, info.lineStart);
+        insertTextAt(el, info.lineStart, content);
         setCursorAt(el, info.lineStart);
       } else {
-        var newText2 = text.substring(0, info.lineEnd) + '\n' + content.replace(/\n$/, '') + text.substring(info.lineEnd);
-        el.textContent = newText2;
+        insertParagraphAt(el, info.lineEnd);
+        insertTextAt(el, info.lineEnd + 1, content);
         setCursorAt(el, info.lineEnd + 1);
       }
     } else {
       var cInfo = TU.getLineInfo(text, pos);
       var insertPos = before ? pos : Math.min(pos + 1, cInfo.lineEnd);
       insertPos = TU.clamp(insertPos, 0, text.length);
-      var newText3 = text.substring(0, insertPos) + reg.content + text.substring(insertPos);
-      el.textContent = newText3;
+      insertTextAt(el, insertPos, reg.content);
       setCursorAt(el, insertPos + reg.content.length - 1);
     }
 
@@ -521,7 +891,10 @@
     var count = Math.min(command.count, text.length - pos);
     var replacement = '';
     for (var i = 0; i < count; i++) replacement += command.char;
-    el.textContent = text.substring(0, pos) + replacement + text.substring(pos + count);
+    setSelectionRange(el, pos, pos + count);
+    if (!_execCmd('insertText', replacement)) {
+      el.textContent = text.substring(0, pos) + replacement + text.substring(pos + count);
+    }
     setCursorAt(el, pos + count - 1);
     TU.fireInputEvent(el);
   };
@@ -534,9 +907,9 @@
     this._saveUndo(el);
     var deleted = text.substring(pos, pos + count);
     Register.set(deleted, 'char');
-    var newText = text.substring(0, pos) + text.substring(pos + count);
-    el.textContent = newText;
+    deleteRange(el, pos, pos + count);
 
+    var newText = getFlatText(el);
     var newInfo = TU.getLineInfo(newText, Math.min(pos, newText.length));
     var maxPos = newInfo.lineEnd > newInfo.lineStart ? newInfo.lineEnd - 1 : newInfo.lineStart;
     setCursorAt(el, Math.min(pos, maxPos));
@@ -576,6 +949,17 @@
     setCursorAt(el, targetVL.start + Math.min(col, maxCol));
   };
 
+  // ── Cursor clamping (for mouseup) ────────────────────
+
+  ContentEditableHandler.prototype.clampCursorToLine = function (el) {
+    var text = getFlatText(el);
+    if (text.length === 0) return;
+    var pos = flatOffsetFromSelection(el);
+    var info = TU.getLineInfo(text, pos);
+    var maxPos = info.lineEnd > info.lineStart ? info.lineEnd - 1 : info.lineStart;
+    if (pos > maxPos) setCursorAt(el, maxPos);
+  };
+
   // ── Scroll ──────────────────────────────────────────
 
   ContentEditableHandler.prototype.ensureCursorVisible = function (el) {
@@ -596,41 +980,100 @@
 
   // ── Cursor rect (for overlay block cursor) ──────────
 
+  // Find which block a flat offset belongs to, and the block's properties
+  function _blockForPos(el, pos) {
+    var blocks = _getBlocks(el);
+    var flatPos = 0;
+    for (var bi = 0; bi < blocks.length; bi++) {
+      if (bi > 0) flatPos++;
+      var block = blocks[bi];
+      var blockLen = _blockText(block).length;
+      if (pos <= flatPos + blockLen) {
+        return { block: block, isEmpty: blockLen === 0 };
+      }
+      flatPos += blockLen;
+    }
+    if (blocks.length > 0) {
+      var last = blocks[blocks.length - 1];
+      return { block: last, isEmpty: _blockText(last).length === 0 };
+    }
+    return null;
+  }
+
   ContentEditableHandler.prototype.getCursorRect = function (el, overridePos) {
     var text = getFlatText(el);
     var pos = overridePos != null ? overridePos : flatOffsetFromSelection(el);
 
-    if (pos < text.length) {
-      var start = selectionFromFlatOffset(el, pos);
-      var end = selectionFromFlatOffset(el, pos + 1);
-      var range = document.createRange();
-      range.setStart(start.node, start.offset);
-      range.setEnd(end.node, end.offset);
-      var rect = range.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+    // For empty blocks (<p><br></p>), use the block element's bounding rect
+    var bInfo = _blockForPos(el, pos);
+    if (bInfo && bInfo.isEmpty && bInfo.block.nodeType === 1) {
+      var bRect = bInfo.block.getBoundingClientRect();
+      if (bRect.height > 0) {
+        var cs = window.getComputedStyle(bInfo.block);
+        var fw = parseFloat(cs.fontSize) * 0.6;
+        console.log('[CE-DEBUG getCursorRect] empty block path', { pos: pos, y: bRect.top, h: bRect.height });
+        return { x: bRect.left, y: bRect.top, width: fw, height: bRect.height };
       }
     }
 
+    // For real characters (not \n block boundaries), measure char width
+    if (pos < text.length && text[pos] !== '\n') {
+      var start = selectionFromFlatOffset(el, pos);
+      var end = selectionFromFlatOffset(el, pos + 1);
+      // Only use span if both are in the same block
+      var startBlock = start.node;
+      while (startBlock && startBlock.parentNode !== el) startBlock = startBlock.parentNode;
+      var endBlock = end.node;
+      while (endBlock && endBlock.parentNode !== el) endBlock = endBlock.parentNode;
+
+      if (startBlock === endBlock) {
+        var range = document.createRange();
+        range.setStart(start.node, start.offset);
+        range.setEnd(end.node, end.offset);
+        var rect = range.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          console.log('[CE-DEBUG getCursorRect] char span path', { pos: pos, x: rect.left, y: rect.top });
+          return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+        }
+      }
+    }
+
+    // For \n positions (block boundaries between non-empty blocks) or cross-block,
+    // use a collapsed range at the target position
+    var point = selectionFromFlatOffset(el, pos);
+    var collapsedRange = document.createRange();
+    collapsedRange.setStart(point.node, point.offset);
+    collapsedRange.collapse(true);
+    var cRect = collapsedRange.getBoundingClientRect();
+    if (cRect.height > 0) {
+      var computed = window.getComputedStyle(el);
+      var fw2 = parseFloat(computed.fontSize) * 0.6;
+      console.log('[CE-DEBUG getCursorRect] collapsed range path', { pos: pos, x: cRect.left, y: cRect.top });
+      return { x: cRect.left, y: cRect.top, width: fw2, height: cRect.height };
+    }
+
+    // Fallback: use current selection's collapsed range
     var sel = window.getSelection();
     if (sel.rangeCount) {
       var r = sel.getRangeAt(0).cloneRange();
       r.collapse(true);
       var rect2 = r.getBoundingClientRect();
       if (rect2.height > 0) {
-        var computed = window.getComputedStyle(el);
-        var fw = parseFloat(computed.fontSize) * 0.6;
-        return { x: rect2.left, y: rect2.top, width: fw, height: rect2.height };
+        var computed2 = window.getComputedStyle(el);
+        var fw3 = parseFloat(computed2.fontSize) * 0.6;
+        console.log('[CE-DEBUG getCursorRect] selection range path', { pos: pos, x: rect2.left, y: rect2.top });
+        return { x: rect2.left, y: rect2.top, width: fw3, height: rect2.height };
       }
     }
 
+    console.log('[CE-DEBUG getCursorRect] ULTIMATE FALLBACK', { pos: pos });
     var elRect = el.getBoundingClientRect();
-    var cs = window.getComputedStyle(el);
-    var fs = parseFloat(cs.fontSize) || 16;
-    var bt = parseInt(cs.borderTopWidth) || 0;
-    var bl = parseInt(cs.borderLeftWidth) || 0;
-    var pt = parseInt(cs.paddingTop) || 0;
-    var pl = parseInt(cs.paddingLeft) || 0;
+    var csf = window.getComputedStyle(el);
+    var fs = parseFloat(csf.fontSize) || 16;
+    var bt = parseInt(csf.borderTopWidth) || 0;
+    var bl = parseInt(csf.borderLeftWidth) || 0;
+    var pt = parseInt(csf.paddingTop) || 0;
+    var pl = parseInt(csf.paddingLeft) || 0;
     return { x: elRect.left + bl + pl, y: elRect.top + bt + pt, width: fs * 0.6, height: fs * 1.2 };
   };
 

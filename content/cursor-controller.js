@@ -96,37 +96,10 @@
         }
       } catch (e) {}
     } else if (ED.isContentEditable(el)) {
-      var sel = window.getSelection();
-      if (!sel.rangeCount) return;
-      var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
-      var flatText = '';
-      var node;
-      while ((node = walker.nextNode())) flatText += node.textContent;
-      if (flatText.length === 0) return;
-
-      var range = sel.getRangeAt(0);
-      var preRange = document.createRange();
-      preRange.selectNodeContents(el);
-      preRange.setEnd(range.startContainer, range.startOffset);
-      var pos2 = preRange.toString().length;
-
-      var info2 = TU.getLineInfo(flatText, pos2);
-      var max2 = info2.lineEnd > info2.lineStart ? info2.lineEnd - 1 : info2.lineStart;
-      if (pos2 > max2) {
-        var remaining = max2;
-        walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
-        while ((node = walker.nextNode())) {
-          if (remaining <= node.textContent.length) {
-            var r = document.createRange();
-            r.setStart(node, remaining);
-            r.collapse(true);
-            sel.removeAllRanges();
-            sel.addRange(r);
-            return;
-          }
-          remaining -= node.textContent.length;
-        }
-      }
+      var handler = _getHandler(el);
+      if (!handler) return;
+      // Delegate to handler which has proper flat-text / DOM-position logic
+      if (handler.clampCursorToLine) handler.clampCursorToLine(el);
     }
   }
 
