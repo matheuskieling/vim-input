@@ -20,6 +20,7 @@
   var _cmdLineText = '';
   var _searchActive = false;
   var _searchText = '';
+  var _searchDirection = '/';
 
   function init(engine, overlay, getActiveElement, getHandler, updateCursor, markFocusSteal) {
     _engine = engine;
@@ -199,8 +200,9 @@
         if (term) {
           window.InputVim.lastSearch = term;
           window.InputVim.lastSearchWholeWord = false;
-          // Jump to first match forward
-          var searchCmd = { type: CommandType.MOTION, motion: window.InputVim.MotionType.SEARCH_NEXT, count: 1 };
+          window.InputVim.lastSearchForward = _searchDirection === '/';
+          var searchMotion = _searchDirection === '/' ? window.InputVim.MotionType.SEARCH_NEXT : window.InputVim.MotionType.SEARCH_PREV;
+          var searchCmd = { type: CommandType.MOTION, motion: searchMotion, count: 1 };
           if (_engine.mode === Mode.VISUAL || _engine.mode === Mode.VISUAL_LINE) {
             handler.extendVisualSelection(el, searchCmd, _engine);
           } else {
@@ -216,13 +218,13 @@
           _searchActive = false;
           _overlay.hideCmdLine();
         } else {
-          _overlay.showCmdLine('/' + _searchText);
+          _overlay.showCmdLine(_searchDirection + _searchText);
         }
         return;
       }
       if (sKey.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         _searchText += sKey;
-        _overlay.showCmdLine('/' + _searchText);
+        _overlay.showCmdLine(_searchDirection + _searchText);
       }
       return;
     }
@@ -329,13 +331,14 @@
       return;
     }
 
-    // '/' activates search mode
-    if (key === '/') {
+    // '/' and '?' activate search mode
+    if (key === '/' || key === '?') {
       _blocked = true;
       killEvent(e);
       _searchActive = true;
       _searchText = '';
-      _overlay.showCmdLine('/');
+      _searchDirection = key;
+      _overlay.showCmdLine(key);
       return;
     }
 

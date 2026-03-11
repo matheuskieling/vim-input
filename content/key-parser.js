@@ -42,6 +42,7 @@
     n: MotionType.SEARCH_NEXT,
     N: MotionType.SEARCH_PREV,
     '*': MotionType.SEARCH_WORD,
+    '#': MotionType.SEARCH_WORD_BACK,
   };
 
   var OPERATOR_KEYS = {

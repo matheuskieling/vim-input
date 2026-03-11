@@ -35,6 +35,7 @@
     SEARCH_NEXT: 'search_next',             // n
     SEARCH_PREV: 'search_prev',             // N
     SEARCH_WORD: 'search_word',             // *
+    SEARCH_WORD_BACK: 'search_word_back',   // #
   });
 
   const OperatorType = Object.freeze({
@@ -91,6 +92,7 @@
   window.InputVim = window.InputVim || {};
   window.InputVim.lastSearch = '';
   window.InputVim.lastSearchWholeWord = false;
+  window.InputVim.lastSearchForward = true;
   window.InputVim.Mode = Mode;
   window.InputVim.MotionType = MotionType;
   window.InputVim.OperatorType = OperatorType;

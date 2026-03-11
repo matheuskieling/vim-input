@@ -331,12 +331,14 @@
           break;
         }
         case MotionType.SEARCH_NEXT: {
-          var sn = searchForward(text, newPos, window.InputVim.lastSearch);
+          var snFn = window.InputVim.lastSearchForward ? searchForward : searchBackward;
+          var sn = snFn(text, newPos, window.InputVim.lastSearch);
           if (sn !== -1) newPos = sn;
           break;
         }
         case MotionType.SEARCH_PREV: {
-          var sp = searchBackward(text, newPos, window.InputVim.lastSearch);
+          var spFn = window.InputVim.lastSearchForward ? searchBackward : searchForward;
+          var sp = spFn(text, newPos, window.InputVim.lastSearch);
           if (sp !== -1) newPos = sp;
           break;
         }
@@ -348,8 +350,23 @@
             var word = text.substring(ws, we + 1);
             window.InputVim.lastSearch = word;
             window.InputVim.lastSearchWholeWord = true;
+            window.InputVim.lastSearchForward = true;
             var sw = searchForward(text, newPos, word);
             if (sw !== -1) newPos = sw;
+          }
+          break;
+        }
+        case MotionType.SEARCH_WORD_BACK: {
+          if (newPos < text.length && TU.charClass(text[newPos]) === 0) {
+            var ws2 = newPos, we2 = newPos;
+            while (ws2 > 0 && TU.charClass(text[ws2 - 1]) === 0) ws2--;
+            while (we2 < text.length - 1 && TU.charClass(text[we2 + 1]) === 0) we2++;
+            var word2 = text.substring(ws2, we2 + 1);
+            window.InputVim.lastSearch = word2;
+            window.InputVim.lastSearchWholeWord = true;
+            window.InputVim.lastSearchForward = false;
+            var sb = searchBackward(text, newPos, word2);
+            if (sb !== -1) newPos = sb;
           }
           break;
         }
