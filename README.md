@@ -278,33 +278,33 @@ On sites where Chrome's native UI swallows the Escape key (Google Search autocom
 
 ```
  NORMAL MODE
- ┌─────────────────────────────────────────────────────┐
- │  Movement      h j k l    w b e    W B E    0 ^ $   │
- │  Find/Till     f F t T    ; ,                        │
- │  Search        /{term}    *    n N                    │
- │  Document      gg G    Ctrl+D  Ctrl+U                │
+ ┌──────────────────────────────────────────────────────┐
+ │  Movement    h j k l    w b e    W B E    0 ^ $      │
+ │  Find/Till   f F t T    ; ,                          │
+ │  Search      /{term}    *    n N                     │
+ │  Document    gg G    Ctrl+D  Ctrl+U                  │
  │                                                      │
- │  Operators     d c y    (compose with motions)       │
- │  Line ops      dd cc yy                              │
- │  Text objs     iw aw    i( a{    i" a'    i[ a<     │
+ │  Operators   d c y    (compose with motions)         │
+ │  Line ops    dd cc yy                                │
+ │  Text objs   iw aw    i( a{    i" a'    i[ a<       │
  │                                                      │
- │  Edit          x X s    r{c}    D C Y    p P         │
- │  Undo/Redo     u    Ctrl+R                           │
+ │  Edit        x X s    r{c}    D C Y    p P           │
+ │  Undo/Redo   u    Ctrl+R                             │
  │                                                      │
- │  Mode          i a I A o O    v V    Escape    :q     │
- └─────────────────────────────────────────────────────┘
+ │  Mode        i a I A o O    v V    Escape    :q      │
+ └──────────────────────────────────────────────────────┘
 
  INSERT MODE
- ┌─────────────────────────────────────────────────────┐
+ ┌──────────────────────────────────────────────────────┐
  │  Type normally. Only Escape, Tab, and bracket        │
  │  matching are intercepted.                           │
- └─────────────────────────────────────────────────────┘
+ └──────────────────────────────────────────────────────┘
 
  VISUAL / VISUAL LINE MODE
- ┌─────────────────────────────────────────────────────┐
+ ┌──────────────────────────────────────────────────────┐
  │  Motions extend selection. Apply operators:          │
  │  d x    y    c s    or use text objects: iw i(       │
- └─────────────────────────────────────────────────────┘
+ └──────────────────────────────────────────────────────┘
 ```
 
 ---
