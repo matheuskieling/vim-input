@@ -1071,6 +1071,67 @@
       }
     }
 
+    // For \n positions in text nodes (plain text contenteditable with white-space: pre-wrap),
+    // Chrome returns zero-height rects for collapsed ranges. Find a nearby measurable
+    // character and offset by line count to compute the correct position.
+    var isNewlinePos = (pos < text.length && text[pos] === '\n') || (pos >= text.length && text.length > 0);
+    if (isNewlinePos) {
+      var nlCS = window.getComputedStyle(el);
+      var nlFontSize = parseFloat(nlCS.fontSize) || 16;
+      var nlCharWidth = nlFontSize * 0.6;
+      var nlLineHeight = parseFloat(nlCS.lineHeight);
+      if (isNaN(nlLineHeight)) nlLineHeight = nlFontSize * 1.2;
+
+      // Search outward from pos for a measurable non-\n character
+      var nlRef = null;
+      var nlRefPos = -1;
+      for (var nlDist = 1; nlDist <= text.length; nlDist++) {
+        var nlBefore = pos - nlDist;
+        if (nlBefore >= 0 && text[nlBefore] !== '\n') {
+          var nlBS = selectionFromFlatOffset(el, nlBefore);
+          var nlBE = selectionFromFlatOffset(el, nlBefore + 1);
+          var nlBR = document.createRange();
+          nlBR.setStart(nlBS.node, nlBS.offset);
+          nlBR.setEnd(nlBE.node, nlBE.offset);
+          var nlBRect = nlBR.getBoundingClientRect();
+          if (nlBRect.height > 0) { nlRef = nlBRect; nlRefPos = nlBefore; break; }
+        }
+        var nlAfter = pos + nlDist;
+        if (nlAfter < text.length && text[nlAfter] !== '\n') {
+          var nlAS = selectionFromFlatOffset(el, nlAfter);
+          var nlAE = selectionFromFlatOffset(el, nlAfter + 1);
+          var nlAR = document.createRange();
+          nlAR.setStart(nlAS.node, nlAS.offset);
+          nlAR.setEnd(nlAE.node, nlAE.offset);
+          var nlARect = nlAR.getBoundingClientRect();
+          if (nlARect.height > 0) { nlRef = nlARect; nlRefPos = nlAfter; break; }
+        }
+      }
+
+      if (nlRef) {
+        // Count \n chars between reference and target to get line offset
+        var nlCount = 0;
+        var nlMin = Math.min(pos, nlRefPos);
+        var nlMax = Math.max(pos, nlRefPos);
+        for (var nlI = nlMin; nlI < nlMax; nlI++) {
+          if (text[nlI] === '\n') nlCount++;
+        }
+        var nlDir = pos > nlRefPos ? 1 : -1;
+
+        var nlElRect = el.getBoundingClientRect();
+        var nlBorderLeft = parseInt(nlCS.borderLeftWidth) || 0;
+        var nlPadLeft = parseInt(nlCS.paddingLeft) || 0;
+
+        console.log('[CE-DEBUG getCursorRect] newline offset path', { pos: pos, refPos: nlRefPos, nlCount: nlCount, dir: nlDir });
+        return {
+          x: nlElRect.left + nlBorderLeft + nlPadLeft,
+          y: nlRef.top + nlDir * nlCount * nlLineHeight,
+          width: nlCharWidth,
+          height: nlRef.height
+        };
+      }
+    }
+
     // For \n positions (block boundaries between non-empty blocks) or cross-block,
     // use a collapsed range at the target position
     var point = selectionFromFlatOffset(el, pos);
