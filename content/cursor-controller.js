@@ -19,6 +19,10 @@
       update(true);
     }, true);
 
+    _overlay.onReposition(function () {
+      update(true);
+    });
+
     document.addEventListener('mouseup', function () {
       var el = _getActiveElement();
       if (!el || _engine.mode === Mode.INSERT) return;

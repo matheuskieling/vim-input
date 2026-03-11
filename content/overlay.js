@@ -17,6 +17,9 @@
     this._cursor = null;
     this._currentTarget = null;
     this._repositionBound = this._reposition.bind(this);
+    this._rafId = null;
+    this._lastRect = null;
+    this._onRepositionCb = null;
   }
 
   Overlay.prototype.init = function () {
@@ -123,6 +126,7 @@
     this._reposition();
     window.addEventListener('scroll', this._repositionBound, true);
     window.addEventListener('resize', this._repositionBound);
+    this._startTracking();
   };
 
   Overlay.prototype.update = function (mode) {
@@ -141,6 +145,7 @@
     this._currentTarget = null;
     window.removeEventListener('scroll', this._repositionBound, true);
     window.removeEventListener('resize', this._repositionBound);
+    this._stopTracking();
   };
 
   Overlay.prototype.updateCmd = function (text) {
@@ -183,6 +188,37 @@
   Overlay.prototype.hideCursor = function () {
     if (!this._cursor) return;
     this._cursor.style.display = 'none';
+  };
+
+  Overlay.prototype.onReposition = function (fn) {
+    this._onRepositionCb = fn;
+  };
+
+  Overlay.prototype._startTracking = function () {
+    this._stopTracking();
+    var self = this;
+    function track() {
+      if (!self._currentTarget) return;
+      var rect = self._currentTarget.getBoundingClientRect();
+      var last = self._lastRect;
+      if (!last ||
+          rect.top !== last.top || rect.left !== last.left ||
+          rect.right !== last.right || rect.bottom !== last.bottom) {
+        self._lastRect = { top: rect.top, left: rect.left, right: rect.right, bottom: rect.bottom };
+        self._reposition();
+        if (self._onRepositionCb) self._onRepositionCb();
+      }
+      self._rafId = requestAnimationFrame(track);
+    }
+    self._rafId = requestAnimationFrame(track);
+  };
+
+  Overlay.prototype._stopTracking = function () {
+    if (this._rafId) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
+    }
+    this._lastRect = null;
   };
 
   Overlay.prototype._updateStyle = function (mode) {

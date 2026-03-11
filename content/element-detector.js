@@ -9,6 +9,7 @@
 
   function isTextInput(el) {
     if (!el) return false;
+    if (el.readOnly) return false;
     if (el.tagName === 'TEXTAREA') return true;
     if (el.tagName === 'INPUT') {
       var type = (el.type || '').toLowerCase();
