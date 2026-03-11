@@ -672,7 +672,9 @@
     while (node && node !== el && node.parentNode !== el) {
       node = node.parentNode;
     }
-    return (node && node !== el) ? node : null;
+    // Only return actual block elements, not text nodes or inline elements
+    if (node && node !== el && _isBlock(node)) return node;
+    return null;
   }
 
   ContentEditableHandler.prototype._doInsertEnter = function (el, text, pos, command) {
@@ -695,39 +697,46 @@
       case InsertEntry.O_LOWER: {
         var block = _findContainingBlock(el, pos);
         if (block) {
+          // Block-based editor: insert a new empty block after the current one.
+          // Don't use execCommand('insertParagraph') — it fires an insertParagraph
+          // input event that editors like ChatGPT/Slack treat as Enter (submit).
+          var newBlock = document.createElement(block.tagName);
+          newBlock.innerHTML = '<br>';
+          block.parentNode.insertBefore(newBlock, block.nextSibling);
           var sel = window.getSelection();
           var r = document.createRange();
-          r.selectNodeContents(block);
-          r.collapse(false);
+          r.setStart(newBlock, 0);
+          r.collapse(true);
           sel.removeAllRanges();
           sel.addRange(r);
-          if (!_execCmd('insertParagraph')) {
-            insertParagraphAt(el, info.lineEnd);
-          }
         } else {
-          insertParagraphAt(el, info.lineEnd);
+          // Plain text contenteditable: insert \n directly in text content.
+          // Don't use execCommand — Chrome converts \n to <div><br></div> elements
+          // which creates a mixed DOM mess that breaks navigation.
+          el.textContent = text.substring(0, info.lineEnd) + '\n' + text.substring(info.lineEnd);
+          setCursorAt(el, info.lineEnd + 1);
         }
-        var newText = getFlatText(el);
-        setCursorAt(el, Math.min(info.lineEnd + 1, newText.length));
         TU.fireInputEvent(el);
         break;
       }
       case InsertEntry.O_UPPER: {
         var block2 = _findContainingBlock(el, pos);
         if (block2) {
+          // Block-based editor: insert a new empty block before the current one.
+          var newBlock2 = document.createElement(block2.tagName);
+          newBlock2.innerHTML = '<br>';
+          block2.parentNode.insertBefore(newBlock2, block2);
           var sel2 = window.getSelection();
           var r2 = document.createRange();
-          r2.selectNodeContents(block2);
+          r2.setStart(newBlock2, 0);
           r2.collapse(true);
           sel2.removeAllRanges();
           sel2.addRange(r2);
-          if (!_execCmd('insertParagraph')) {
-            insertParagraphAt(el, info.lineStart);
-          }
         } else {
-          insertParagraphAt(el, info.lineStart);
+          // Plain text contenteditable: insert \n directly in text content.
+          el.textContent = text.substring(0, info.lineStart) + '\n' + text.substring(info.lineStart);
+          setCursorAt(el, info.lineStart);
         }
-        setCursorAt(el, info.lineStart);
         TU.fireInputEvent(el);
         break;
       }
