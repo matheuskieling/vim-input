@@ -711,10 +711,32 @@
           sel.addRange(r);
         } else {
           // Plain text contenteditable: insert \n directly in text content.
-          // Don't use execCommand — Chrome converts \n to <div><br></div> elements
-          // which creates a mixed DOM mess that breaks navigation.
-          el.textContent = text.substring(0, info.lineEnd) + '\n' + text.substring(info.lineEnd);
-          setCursorAt(el, info.lineEnd + 1);
+          // Split the text node at the cursor position so Chrome positions
+          // the native INSERT-mode caret at the correct line (Chrome is
+          // ambiguous when the caret is at a \n inside a single text node).
+          var oNewText = text.substring(0, info.lineEnd) + '\n' + text.substring(info.lineEnd);
+          el.textContent = oNewText;
+          var oCursorPos = info.lineEnd + 1;
+          var oTn = el.firstChild;
+          if (oTn && oTn.nodeType === 3 && oCursorPos < oTn.textContent.length) {
+            var oSecond = oTn.splitText(oCursorPos);
+            var oSel = window.getSelection();
+            var oR = document.createRange();
+            oR.setStart(oSecond, 0);
+            oR.collapse(true);
+            oSel.removeAllRanges();
+            oSel.addRange(oR);
+          } else {
+            // Cursor at end of text — add placeholder <br> so Chrome shows
+            // the trailing empty line, then position cursor before it.
+            el.appendChild(document.createElement('br'));
+            var oSel2 = window.getSelection();
+            var oR2 = document.createRange();
+            oR2.setStart(el, el.childNodes.length - 1);
+            oR2.collapse(true);
+            oSel2.removeAllRanges();
+            oSel2.addRange(oR2);
+          }
         }
         TU.fireInputEvent(el);
         break;
@@ -733,9 +755,22 @@
           sel2.removeAllRanges();
           sel2.addRange(r2);
         } else {
-          // Plain text contenteditable: insert \n directly in text content.
-          el.textContent = text.substring(0, info.lineStart) + '\n' + text.substring(info.lineStart);
-          setCursorAt(el, info.lineStart);
+          // Plain text contenteditable: same split approach as O_LOWER.
+          var ONewText = text.substring(0, info.lineStart) + '\n' + text.substring(info.lineStart);
+          el.textContent = ONewText;
+          var OCursorPos = info.lineStart;
+          var OTn = el.firstChild;
+          if (OTn && OTn.nodeType === 3 && OCursorPos < OTn.textContent.length) {
+            var OSecond = OTn.splitText(OCursorPos);
+            var OSel = window.getSelection();
+            var OR = document.createRange();
+            OR.setStart(OSecond, 0);
+            OR.collapse(true);
+            OSel.removeAllRanges();
+            OSel.addRange(OR);
+          } else {
+            setCursorAt(el, OCursorPos);
+          }
         }
         TU.fireInputEvent(el);
         break;
@@ -1059,7 +1094,12 @@
       var endBlock = end.node;
       while (endBlock && endBlock.parentNode !== el) endBlock = endBlock.parentNode;
 
-      if (startBlock === endBlock) {
+      // Allow cross-text-node ranges when both are sibling text nodes
+      // (happens after splitText in o/O commands)
+      var sameContext = startBlock === endBlock ||
+        (start.node.nodeType === 3 && end.node.nodeType === 3 &&
+         start.node.parentNode === end.node.parentNode);
+      if (sameContext) {
         var range = document.createRange();
         range.setStart(start.node, start.offset);
         range.setEnd(end.node, end.offset);
