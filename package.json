@@ -1,0 +1,24 @@
+{
+  "name": "input-vim",
+  "version": "1.0.0",
+  "description": "<p align=\"center\">   <img src=\"icons/icon128.png\" alt=\"Input Vim\" width=\"96\" height=\"96\"> </p>",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/matheuskieling/vim-input.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/matheuskieling/vim-input/issues"
+  },
+  "homepage": "https://github.com/matheuskieling/vim-input#readme",
+  "devDependencies": {
+    "jest": "^30.3.0",
+    "jest-environment-jsdom": "^30.3.0"
+  }
+}
