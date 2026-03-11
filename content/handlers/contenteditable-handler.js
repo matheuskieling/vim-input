@@ -101,12 +101,12 @@
       });
     }
     var result = parts.join('\n');
-    console.log('[CE-DEBUG getFlatText]', {
+    console.log('[CE-DEBUG getFlatText] ' + JSON.stringify({
       blockCount: blocks.length,
       blocks: blockDebug,
-      flatText: JSON.stringify(result),
+      flatText: result,
       flatTextLen: result.length,
-    });
+    }));
     return result;
   }
 
@@ -201,12 +201,12 @@
     if (!sel.rangeCount) return 0;
     var range = sel.getRangeAt(0);
     var result = _flatOffsetAt(el, range.startContainer, range.startOffset);
-    console.log('[CE-DEBUG flatOffsetFromSelection]', {
+    console.log('[CE-DEBUG flatOffsetFromSelection] ' + JSON.stringify({
       startContainer: range.startContainer.nodeName,
-      startContainerText: range.startContainer.nodeType === 3 ? JSON.stringify(range.startContainer.textContent.substring(0, 40)) : range.startContainer.innerHTML ? range.startContainer.innerHTML.substring(0, 40) : '?',
+      startContainerText: range.startContainer.nodeType === 3 ? range.startContainer.textContent.substring(0, 40) : range.startContainer.innerHTML ? range.startContainer.innerHTML.substring(0, 40) : '?',
       startOffset: range.startOffset,
       result: result,
-    });
+    }));
     return result;
   }
 
@@ -296,12 +296,12 @@
 
   function setCursorAt(el, flatOffset) {
     var point = selectionFromFlatOffset(el, flatOffset);
-    console.log('[CE-DEBUG setCursorAt]', {
+    console.log('[CE-DEBUG setCursorAt] ' + JSON.stringify({
       flatOffset: flatOffset,
       pointNode: point.node.nodeName,
-      pointNodeText: point.node.nodeType === 3 ? JSON.stringify(point.node.textContent.substring(0, 40)) : point.node.innerHTML ? point.node.innerHTML.substring(0, 40) : '?',
+      pointNodeText: point.node.nodeType === 3 ? point.node.textContent.substring(0, 40) : point.node.innerHTML ? point.node.innerHTML.substring(0, 40) : '?',
       pointOffset: point.offset,
-    });
+    }));
     var sel = window.getSelection();
     var range = document.createRange();
     range.setStart(point.node, point.offset);
@@ -350,10 +350,9 @@
 
   function insertParagraphAt(el, offset) {
     setCursorAt(el, offset);
-    if (!_execCmd('insertParagraph')) {
-      var text = getFlatText(el);
-      el.textContent = text.substring(0, offset) + '\n' + text.substring(offset);
-    }
+    // No fallback: execCommand returns false when editors like ProseMirror
+    // prevent default on beforeinput, but they handle it internally.
+    _execCmd('insertParagraph');
   }
 
   // ── Visual line helpers for contenteditable ────────────
@@ -475,8 +474,28 @@
   };
 
   ContentEditableHandler.prototype.execute = function (el, command, engine) {
+    var sel = window.getSelection();
+    var selDebug = sel.rangeCount ? {
+      anchorNode: sel.anchorNode ? sel.anchorNode.nodeName : null,
+      anchorOffset: sel.anchorOffset,
+      focusNode: sel.focusNode ? sel.focusNode.nodeName : null,
+      focusOffset: sel.focusOffset,
+      isCollapsed: sel.isCollapsed,
+    } : 'no-range';
+    console.log('[CE-DEBUG execute] ' + JSON.stringify({
+      commandType: command.type,
+      operator: command.operator,
+      motion: command.motion,
+      count: command.count,
+      entry: command.entry,
+      selection: selDebug,
+      innerHTML: el.innerHTML,
+    }));
+
     var text = getFlatText(el);
     var pos = flatOffsetFromSelection(el);
+
+    console.log('[CE-DEBUG execute pos] ' + JSON.stringify({ pos: pos, textLen: text.length, flatText: text }));
 
     if (command.type !== CommandType.MOTION ||
         (command.motion !== MotionType.LINE_UP && command.motion !== MotionType.LINE_DOWN)) {
@@ -506,7 +525,7 @@
         this._doVisualLineEnter(el, pos, engine);
         break;
       case CommandType.VISUAL_OPERATOR:
-        this._doVisualOperator(el, command);
+        this._doVisualOperator(el, command, engine);
         break;
       case CommandType.PASTE:
         this._doPaste(el, text, pos, false);
@@ -542,20 +561,20 @@
     var isVertical = command.motion === MotionType.LINE_UP || command.motion === MotionType.LINE_DOWN;
     var vLines = null;
 
+    console.log('[CE-DEBUG _doMotion] ' + JSON.stringify({
+      motion: command.motion,
+      pos: pos,
+      count: command.count,
+      char: command.char,
+      isVertical: isVertical,
+    }));
+
     if (isVertical) {
       vLines = computeCEVisualLines(el, text);
       if (this._desiredCol < 0) {
         var vi = TU.findVisualLine(vLines, pos);
         this._desiredCol = pos - vLines[vi].start;
       }
-      console.log('[CE-DEBUG _doMotion]', {
-        motion: command.motion,
-        pos: pos,
-        textLen: text.length,
-        flatText: JSON.stringify(text),
-        desiredCol: this._desiredCol,
-        vLines: JSON.stringify(vLines),
-      });
     } else {
       this._desiredCol = -1;
     }
@@ -568,12 +587,12 @@
       if (newPos > maxPos) newPos = maxPos;
     }
 
-    if (isVertical) {
-      console.log('[CE-DEBUG _doMotion result]', {
-        newPos: newPos,
-        charAtNewPos: text[newPos],
-      });
-    }
+    console.log('[CE-DEBUG _doMotion result] ' + JSON.stringify({
+      motion: command.motion,
+      oldPos: pos,
+      newPos: newPos,
+      charAtNewPos: text[newPos],
+    }));
 
     setCursorAt(el, newPos);
   };
@@ -665,18 +684,6 @@
     TU.fireInputEvent(el);
   };
 
-  // Find the direct child block element of el that contains the cursor
-  function _findContainingBlock(el, pos) {
-    var point = selectionFromFlatOffset(el, pos);
-    var node = point.node;
-    while (node && node !== el && node.parentNode !== el) {
-      node = node.parentNode;
-    }
-    // Only return actual block elements, not text nodes or inline elements
-    if (node && node !== el && _isBlock(node)) return node;
-    return null;
-  }
-
   ContentEditableHandler.prototype._doInsertEnter = function (el, text, pos, command) {
     this._saveUndo(el);
 
@@ -695,84 +702,55 @@
         setCursorAt(el, info.lineEnd);
         break;
       case InsertEntry.O_LOWER: {
-        var block = _findContainingBlock(el, pos);
-        if (block) {
-          // Block-based editor: insert a new empty block after the current one.
-          // Don't use execCommand('insertParagraph') — it fires an insertParagraph
-          // input event that editors like ChatGPT/Slack treat as Enter (submit).
-          var newBlock = document.createElement(block.tagName);
-          newBlock.innerHTML = '<br>';
-          block.parentNode.insertBefore(newBlock, block.nextSibling);
-          var sel = window.getSelection();
-          var r = document.createRange();
-          r.setStart(newBlock, 0);
-          r.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(r);
-        } else {
-          // Plain text contenteditable: insert \n directly in text content.
-          // Split the text node at the cursor position so Chrome positions
-          // the native INSERT-mode caret at the correct line (Chrome is
-          // ambiguous when the caret is at a \n inside a single text node).
-          var oNewText = text.substring(0, info.lineEnd) + '\n' + text.substring(info.lineEnd);
-          el.textContent = oNewText;
-          var oCursorPos = info.lineEnd + 1;
-          var oTn = el.firstChild;
-          if (oTn && oTn.nodeType === 3 && oCursorPos < oTn.textContent.length) {
-            var oSecond = oTn.splitText(oCursorPos);
-            var oSel = window.getSelection();
-            var oR = document.createRange();
-            oR.setStart(oSecond, 0);
-            oR.collapse(true);
-            oSel.removeAllRanges();
-            oSel.addRange(oR);
-          } else {
-            // Cursor at end of text — add placeholder <br> so Chrome shows
-            // the trailing empty line, then position cursor before it.
-            el.appendChild(document.createElement('br'));
-            var oSel2 = window.getSelection();
-            var oR2 = document.createRange();
-            oR2.setStart(el, el.childNodes.length - 1);
-            oR2.collapse(true);
-            oSel2.removeAllRanges();
-            oSel2.addRange(oR2);
-          }
+        var vLinesO = computeCEVisualLines(el, text);
+        var viO = TU.findVisualLine(vLinesO, pos);
+        var vEnd = vLinesO[viO].end;
+        var midBlockO = vEnd < info.lineEnd;
+        setCursorAt(el, vEnd);
+        document.dispatchEvent(new Event('selectionchange'));
+        console.log('[CE-DEBUG O_LOWER] ' + JSON.stringify({
+          vEnd: vEnd,
+          infoLineEnd: info.lineEnd,
+          midBlock: midBlockO,
+        }));
+        _execCmd('insertParagraph');
+        if (midBlockO) {
+          // Mid-block split: first insertParagraph split the block,
+          // second creates the empty line between the two halves.
+          _execCmd('insertParagraph');
+          var emptyPosO = vEnd + 1;
+          setTimeout(function () {
+            setCursorAt(el, emptyPosO);
+          }, 0);
         }
         TU.fireInputEvent(el);
         break;
       }
       case InsertEntry.O_UPPER: {
-        var block2 = _findContainingBlock(el, pos);
-        if (block2) {
-          // Block-based editor: insert a new empty block before the current one.
-          var newBlock2 = document.createElement(block2.tagName);
-          newBlock2.innerHTML = '<br>';
-          block2.parentNode.insertBefore(newBlock2, block2);
-          var sel2 = window.getSelection();
-          var r2 = document.createRange();
-          r2.setStart(newBlock2, 0);
-          r2.collapse(true);
-          sel2.removeAllRanges();
-          sel2.addRange(r2);
-        } else {
-          // Plain text contenteditable: same split approach as O_LOWER.
-          var ONewText = text.substring(0, info.lineStart) + '\n' + text.substring(info.lineStart);
-          el.textContent = ONewText;
-          var OCursorPos = info.lineStart;
-          var OTn = el.firstChild;
-          if (OTn && OTn.nodeType === 3 && OCursorPos < OTn.textContent.length) {
-            var OSecond = OTn.splitText(OCursorPos);
-            var OSel = window.getSelection();
-            var OR = document.createRange();
-            OR.setStart(OSecond, 0);
-            OR.collapse(true);
-            OSel.removeAllRanges();
-            OSel.addRange(OR);
-          } else {
-            setCursorAt(el, OCursorPos);
-          }
+        var vLinesU = computeCEVisualLines(el, text);
+        var viU = TU.findVisualLine(vLinesU, pos);
+        var vStart = vLinesU[viU].start;
+        var midBlockU = vStart > info.lineStart;
+        setCursorAt(el, vStart);
+        document.dispatchEvent(new Event('selectionchange'));
+        console.log('[CE-DEBUG O_UPPER] ' + JSON.stringify({
+          vStart: vStart,
+          infoLineStart: info.lineStart,
+          midBlock: midBlockU,
+        }));
+        _execCmd('insertParagraph');
+        if (midBlockU) {
+          // Mid-block split: first insertParagraph split the block,
+          // second creates the empty line between the two halves.
+          _execCmd('insertParagraph');
         }
         TU.fireInputEvent(el);
+        // Cursor lands on the wrong block after insertParagraph.
+        // Defer repositioning so ProseMirror's async DOM updates settle.
+        var targetPosU = midBlockU ? vStart + 1 : vStart;
+        setTimeout(function () {
+          setCursorAt(el, targetPosU);
+        }, 0);
         break;
       }
     }
@@ -785,28 +763,28 @@
   };
 
   // Set a linewise selection from startVi to endVi (visual line indices).
-  // Selects entire block elements at the parent level so that delete removes them fully.
+  // Selects visual line ranges rather than entire blocks.
   function _setLinewiseSelection(el, startVi, endVi, vLines) {
     var startLine = vLines[startVi];
     var endLine = vLines[endVi];
 
-    var startBInfo = _blockForPos(el, startLine.start);
-    var endBInfo = _blockForPos(el, endLine.start);
-
-    // Use block-level selection when blocks are direct children of el
-    if (startBInfo && endBInfo &&
-        startBInfo.block !== el && endBInfo.block !== el &&
-        startBInfo.block.parentNode === el && endBInfo.block.parentNode === el) {
-      var sel = window.getSelection();
-      var range = document.createRange();
-      range.setStartBefore(startBInfo.block);
-      range.setEndAfter(endBInfo.block);
-      sel.removeAllRanges();
-      sel.addRange(range);
-    } else {
-      // Fallback for plain text (no block children)
-      setSelectionRange(el, startLine.start, endLine.end);
+    // For single empty visual lines, use block-level selection so the
+    // highlight is visible even when there is no text.
+    if (startVi === endVi && startLine.start === startLine.end) {
+      var bInfo = _blockForPos(el, startLine.start);
+      if (bInfo && bInfo.isEmpty && bInfo.block.nodeType === 1 && bInfo.block.parentNode === el) {
+        var sel = window.getSelection();
+        var range = document.createRange();
+        range.setStartBefore(bInfo.block);
+        range.setEndAfter(bInfo.block);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        return;
+      }
     }
+
+    // Select the visual line text range
+    setSelectionRange(el, startLine.start, endLine.end);
   }
 
   ContentEditableHandler.prototype._doVisualLineEnter = function (el, pos, engine) {
@@ -867,14 +845,51 @@
     setSelectionRange(el, range.from, range.to);
   };
 
-  ContentEditableHandler.prototype._doVisualOperator = function (el, command) {
+  ContentEditableHandler.prototype._doVisualOperator = function (el, command, engine) {
+    // For linewise operations, use flat offset deletion so empty blocks
+    // and visual lines are handled correctly.
+    if (command.lineWise && engine) {
+      var text = getFlatText(el);
+      var vLines = computeCEVisualLines(el, text);
+      var anchor = engine.visualAnchor;
+      var head = engine.visualHead;
+      var anchorVi = TU.findVisualLine(vLines, anchor);
+      var headVi = TU.findVisualLine(vLines, head);
+      var startVi = Math.min(anchorVi, headVi);
+      var endVi = Math.max(anchorVi, headVi);
+      var from = vLines[startVi].start;
+      var to = vLines[endVi].end;
+
+      // Include the newline separator so the block/line is fully removed
+      if (to < text.length) to++;
+      else if (from > 0) from--;
+
+      var deleted = text.substring(from, to);
+
+      if (command.operator === OperatorType.YANK) {
+        Register.set(deleted, 'line');
+        this._lastYankFrom = from;
+        this._lastYankTo = to;
+        setCursorAt(el, from);
+        return;
+      }
+
+      this._saveUndo(el);
+      Register.set(deleted, 'line');
+      deleteRange(el, from, to);
+      var newText = getFlatText(el);
+      setCursorAt(el, Math.min(from, Math.max(newText.length - 1, 0)));
+      TU.fireInputEvent(el);
+      return;
+    }
+
+    // Char-wise visual operator
     var sel = window.getSelection();
     if (!sel.rangeCount) return;
     var selected = sel.toString();
-    var regType = command.lineWise ? 'line' : 'char';
 
     if (command.operator === OperatorType.YANK) {
-      Register.set(selected, regType);
+      Register.set(selected, 'char');
       var selRange = sel.getRangeAt(0);
       this._lastYankFrom = _flatOffsetAt(el, selRange.startContainer, selRange.startOffset);
       this._lastYankTo = this._lastYankFrom + selected.length;
@@ -884,7 +899,7 @@
     }
 
     this._saveUndo(el);
-    Register.set(selected, regType);
+    Register.set(selected, 'char');
 
     if (!_execCmd('delete')) {
       var range = sel.getRangeAt(0);
@@ -1079,7 +1094,7 @@
       if (bRect.height > 0) {
         var cs = window.getComputedStyle(bInfo.block);
         var fw = parseFloat(cs.fontSize) * 0.6;
-        console.log('[CE-DEBUG getCursorRect] empty block path', { pos: pos, y: bRect.top, h: bRect.height });
+        console.log('[CE-DEBUG getCursorRect] empty block path ' + JSON.stringify({ pos: pos, y: bRect.top, h: bRect.height }));
         return { x: bRect.left, y: bRect.top, width: fw, height: bRect.height };
       }
     }
@@ -1105,7 +1120,7 @@
         range.setEnd(end.node, end.offset);
         var rect = range.getBoundingClientRect();
         if (rect.width > 0 && rect.height > 0) {
-          console.log('[CE-DEBUG getCursorRect] char span path', { pos: pos, x: rect.left, y: rect.top });
+          console.log('[CE-DEBUG getCursorRect] char span path ' + JSON.stringify({ pos: pos, x: rect.left, y: rect.top }));
           return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
         }
       }
@@ -1162,7 +1177,7 @@
         var nlBorderLeft = parseInt(nlCS.borderLeftWidth) || 0;
         var nlPadLeft = parseInt(nlCS.paddingLeft) || 0;
 
-        console.log('[CE-DEBUG getCursorRect] newline offset path', { pos: pos, refPos: nlRefPos, nlCount: nlCount, dir: nlDir });
+        console.log('[CE-DEBUG getCursorRect] newline offset path ' + JSON.stringify({ pos: pos, refPos: nlRefPos, nlCount: nlCount, dir: nlDir }));
         return {
           x: nlElRect.left + nlBorderLeft + nlPadLeft,
           y: nlRef.top + nlDir * nlCount * nlLineHeight,
@@ -1182,7 +1197,7 @@
     if (cRect.height > 0) {
       var computed = window.getComputedStyle(el);
       var fw2 = parseFloat(computed.fontSize) * 0.6;
-      console.log('[CE-DEBUG getCursorRect] collapsed range path', { pos: pos, x: cRect.left, y: cRect.top });
+      console.log('[CE-DEBUG getCursorRect] collapsed range path ' + JSON.stringify({ pos: pos, x: cRect.left, y: cRect.top }));
       return { x: cRect.left, y: cRect.top, width: fw2, height: cRect.height };
     }
 
@@ -1195,12 +1210,12 @@
       if (rect2.height > 0) {
         var computed2 = window.getComputedStyle(el);
         var fw3 = parseFloat(computed2.fontSize) * 0.6;
-        console.log('[CE-DEBUG getCursorRect] selection range path', { pos: pos, x: rect2.left, y: rect2.top });
+        console.log('[CE-DEBUG getCursorRect] selection range path ' + JSON.stringify({ pos: pos, x: rect2.left, y: rect2.top }));
         return { x: rect2.left, y: rect2.top, width: fw3, height: rect2.height };
       }
     }
 
-    console.log('[CE-DEBUG getCursorRect] ULTIMATE FALLBACK', { pos: pos });
+    console.log('[CE-DEBUG getCursorRect] ULTIMATE FALLBACK ' + JSON.stringify({ pos: pos }));
     var elRect = el.getBoundingClientRect();
     var csf = window.getComputedStyle(el);
     var fs = parseFloat(csf.fontSize) || 16;
