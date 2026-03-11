@@ -694,13 +694,27 @@
       case InsertEntry.A_LOWER:
         setCursorAt(el, Math.min(pos + 1, text.length));
         break;
-      case InsertEntry.I_UPPER:
-        var m = info.lineText.match(/^\s*/);
-        setCursorAt(el, info.lineStart + (m ? m[0].length : 0));
+      case InsertEntry.I_UPPER: {
+        var vLinesI = computeCEVisualLines(el, text);
+        var viI = TU.findVisualLine(vLinesI, pos);
+        var vStartI = vLinesI[viI].start;
+        var vText = text.substring(vStartI, vLinesI[viI].end);
+        var mI = vText.match(/^\s*/);
+        setCursorAt(el, vStartI + (mI ? mI[0].length : 0));
         break;
-      case InsertEntry.A_UPPER:
-        setCursorAt(el, info.lineEnd);
+      }
+      case InsertEntry.A_UPPER: {
+        var vLinesA = computeCEVisualLines(el, text);
+        var viA = TU.findVisualLine(vLinesA, pos);
+        var vEndA = vLinesA[viA].end;
+        // For mid-block visual lines, end points to the first char of the
+        // next visual line — the browser renders the caret on the next line.
+        // Use end - 1 to keep cursor on the current visual line.
+        // At block boundaries (end === lineEnd), end maps to the block's
+        // \n separator which renders correctly at the line's end.
+        setCursorAt(el, vEndA < info.lineEnd ? vEndA - 1 : vEndA);
         break;
+      }
       case InsertEntry.O_LOWER: {
         var vLinesO = computeCEVisualLines(el, text);
         var viO = TU.findVisualLine(vLinesO, pos);
