@@ -376,16 +376,40 @@
       case InsertEntry.A_UPPER:
         setCursor(el, info.lineEnd);
         break;
-      case InsertEntry.O_LOWER:
-        el.value = text.substring(0, info.lineEnd) + '\n' + text.substring(info.lineEnd);
-        setCursor(el, info.lineEnd + 1);
+      case InsertEntry.O_LOWER: {
+        var vLinesO = getElementVisualLines(el);
+        if (vLinesO) {
+          var viO = TU.findVisualLine(vLinesO, pos);
+          var vEndO = vLinesO[viO].end;
+          var insertO = vEndO < info.lineEnd ? '\n\n' : '\n';
+          el.value = text.substring(0, vEndO) + insertO + text.substring(vEndO);
+          setCursor(el, vEndO + 1);
+        } else {
+          el.value = text.substring(0, info.lineEnd) + '\n' + text.substring(info.lineEnd);
+          setCursor(el, info.lineEnd + 1);
+        }
         TU.fireInputEvent(el);
         break;
-      case InsertEntry.O_UPPER:
-        el.value = text.substring(0, info.lineStart) + '\n' + text.substring(info.lineStart);
-        setCursor(el, info.lineStart);
+      }
+      case InsertEntry.O_UPPER: {
+        var vLinesU = getElementVisualLines(el);
+        if (vLinesU) {
+          var viU = TU.findVisualLine(vLinesU, pos);
+          var vStartU = vLinesU[viU].start;
+          if (vStartU > info.lineStart) {
+            el.value = text.substring(0, vStartU) + '\n\n' + text.substring(vStartU);
+            setCursor(el, vStartU + 1);
+          } else {
+            el.value = text.substring(0, vStartU) + '\n' + text.substring(vStartU);
+            setCursor(el, vStartU);
+          }
+        } else {
+          el.value = text.substring(0, info.lineStart) + '\n' + text.substring(info.lineStart);
+          setCursor(el, info.lineStart);
+        }
         TU.fireInputEvent(el);
         break;
+      }
     }
   };
 
