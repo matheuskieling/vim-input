@@ -286,7 +286,7 @@ On sites where Chrome's native UI swallows the Escape key (Google Search autocom
  │                                                      │
  │  Operators   d c y    (compose with motions)         │
  │  Line ops    dd cc yy                                │
- │  Text objs   iw aw    i( a{    i" a'    i[ a<       │
+ │  Text objs   iw aw    i( a{    i" a'    i[ a<        │
  │                                                      │
  │  Edit        x X s    r{c}    D C Y    p P           │
  │  Undo/Redo   u    Ctrl+R                             │
