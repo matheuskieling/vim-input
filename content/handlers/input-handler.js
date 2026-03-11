@@ -109,7 +109,7 @@
       if (lineWidth > contentWidth && i > lineStart && text[i] !== ' ' && text[i] !== '\t') {
         var wrapAt = i;
         for (var j = i - 1; j > lineStart; j--) {
-          if (text[j] === ' ' || text[j] === '\t') {
+          if (text[j] === ' ' || text[j] === '\t' || text[j] === '-') {
             wrapAt = j + 1;
             break;
           }
