@@ -47,12 +47,6 @@ Browser inputs are painful for anyone used to Vim. Moving by word, deleting to e
 - **Configurable** &mdash; start mode, bracket matching, tab size, yank highlight, scroll jump size, site exclusions, and more
 - **Works everywhere** &mdash; standard inputs, textareas, and contenteditable (rich text editors, GitHub PR descriptions, Notion, etc.)
 
-<p align="center">
-  <img src="images/insert-mode.png" alt="Insert mode on Google Search" width="700">
-  <br>
-  <em>Insert mode &mdash; type normally with the green mode indicator</em>
-</p>
-
 ---
 
 ## Installation
@@ -83,12 +77,6 @@ A small color-coded badge next to the input shows the current mode.
 | **Insert** | `-- INSERT --` (green) | Type text normally. Only `Escape`, `Tab`, and bracket matching are intercepted. |
 | **Visual** | `-- VISUAL --` (orange) | Character-wise selection. Motions extend the selection. |
 | **Visual Line** | `-- V-LINE --` (orange) | Line-wise selection. Operates on full lines. |
-
-<p align="center">
-  <img src="images/V-line-mode.png" alt="Visual Line mode on GitHub" width="700">
-  <br>
-  <em>Visual Line mode &mdash; select entire lines on a GitHub PR</em>
-</p>
 
 ---
 
@@ -197,12 +185,6 @@ Text objects select structured regions of text. Use with operators (`diw`, `ca"`
 | `i<` / `a<` | Inner / around angle brackets `<>` |
 | `i"` / `a"` | Inner / around double quotes |
 | `i'` / `a'` | Inner / around single quotes |
-
-<p align="center">
-  <img src="images/text-object-comprehension.png" alt="Text objects in action" width="700">
-  <br>
-  <em>Text objects &mdash; select inside braces, quotes, and more</em>
-</p>
 
 ### Editing Commands
 
