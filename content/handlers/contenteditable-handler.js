@@ -1226,6 +1226,30 @@
           height: nlRef.height
         };
       }
+
+      // All content is newlines (e.g. ProseMirror hardBreaks in a single block)
+      // — no measurable character exists. Compute position from block rect + line height.
+      if (bInfo && bInfo.block.nodeType === 1) {
+        var abRect = bInfo.block.getBoundingClientRect();
+        if (abRect.height > 0) {
+          var abCS = window.getComputedStyle(bInfo.block);
+          var abBT = parseInt(abCS.borderTopWidth) || 0;
+          var abPT = parseInt(abCS.paddingTop) || 0;
+          var abBL = parseInt(abCS.borderLeftWidth) || 0;
+          var abPL = parseInt(abCS.paddingLeft) || 0;
+          var abLine = 0;
+          for (var abI = 0; abI < pos && abI < text.length; abI++) {
+            if (text[abI] === '\n') abLine++;
+          }
+          console.log('[CE-DEBUG getCursorRect] all-newline block path ' + JSON.stringify({ pos: pos, line: abLine }));
+          return {
+            x: abRect.left + abBL + abPL,
+            y: abRect.top + abBT + abPT + abLine * nlLineHeight,
+            width: nlCharWidth,
+            height: nlLineHeight
+          };
+        }
+      }
     }
 
     // For \n positions (block boundaries between non-empty blocks) or cross-block,
