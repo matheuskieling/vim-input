@@ -387,15 +387,53 @@ describe('resolveMotion', () => {
     expect(pos).toBe(7); // 'b' at index 7 (last char of "ab")
   });
 
-  test('PARAGRAPH_FORWARD', () => {
+  test('PARAGRAPH_FORWARD lands on blank line', () => {
     const text = 'hello\nworld\n\nfoo';
     const pos = MR.resolveMotion(text, 0, MT.PARAGRAPH_FORWARD, 1, false, -1);
-    expect(pos).toBe(13); // start of "foo"
+    expect(pos).toBe(12); // blank line between "world" and "foo"
   });
 
-  test('PARAGRAPH_BACK', () => {
+  test('PARAGRAPH_FORWARD from blank line skips to next boundary', () => {
+    const text = 'aaa\n\nbbb\n\nccc';
+    const pos = MR.resolveMotion(text, 4, MT.PARAGRAPH_FORWARD, 1, false, -1);
+    expect(pos).toBe(9); // blank line between "bbb" and "ccc"
+  });
+
+  test('PARAGRAPH_FORWARD at last paragraph goes to end', () => {
+    const text = 'hello\nworld\n\nfoo';
+    const pos = MR.resolveMotion(text, 13, MT.PARAGRAPH_FORWARD, 1, false, -1);
+    expect(pos).toBe(16); // end of text
+  });
+
+  test('PARAGRAPH_BACK lands on blank line', () => {
     const text = 'hello\nworld\n\nfoo';
     const pos = MR.resolveMotion(text, 14, MT.PARAGRAPH_BACK, 1, false, -1);
+    expect(pos).toBe(12); // blank line between "world" and "foo"
+  });
+
+  test('PARAGRAPH_BACK from blank line goes to previous boundary', () => {
+    const text = 'aaa\n\nbbb\n\nccc';
+    const pos = MR.resolveMotion(text, 9, MT.PARAGRAPH_BACK, 1, false, -1);
+    expect(pos).toBe(4); // blank line between "aaa" and "bbb"
+  });
+
+  test('PARAGRAPH_BACK at first paragraph goes to start', () => {
+    const text = 'hello\nworld\n\nfoo';
+    const pos = MR.resolveMotion(text, 5, MT.PARAGRAPH_BACK, 1, false, -1);
+    expect(pos).toBe(0);
+  });
+
+  test('PARAGRAPH_BACK reaches pos 0 when text starts with newline', () => {
+    const text = '\nasdlkfjalkj\n\nasdlkfjasdflkj\n\nasldkfjaslkdj\n';
+    // From pos 1 (start of text after leading blank line), { should go to pos 0
+    const pos = MR.resolveMotion(text, 1, MT.PARAGRAPH_BACK, 1, false, -1);
+    expect(pos).toBe(0);
+  });
+
+  test('PARAGRAPH_BACK from phantom blank line reaches pos 0', () => {
+    const text = '\nasdlkfjalkj\n\nasdlkfjasdflkj\n\nasldkfjaslkdj\n';
+    // From pos 13 (blank line between hard break and next block), { should reach 0
+    const pos = MR.resolveMotion(text, 13, MT.PARAGRAPH_BACK, 1, false, -1);
     expect(pos).toBe(0);
   });
 

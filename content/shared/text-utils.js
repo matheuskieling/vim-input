@@ -103,7 +103,7 @@
   // ── Line helpers ──────────────────────────────────────
 
   function getLineInfo(text, pos) {
-    var lineStart = text.lastIndexOf('\n', pos - 1) + 1;
+    var lineStart = pos > 0 ? text.lastIndexOf('\n', pos - 1) + 1 : 0;
     var lineEndIdx = text.indexOf('\n', pos);
     if (lineEndIdx === -1) lineEndIdx = text.length;
     return {

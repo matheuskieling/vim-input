@@ -438,44 +438,54 @@
   function paragraphForward(text, pos) {
     var len = text.length;
     if (pos >= len) return len;
-    // Skip current non-blank lines
     var cur = pos;
-    while (cur < len && !isBlankLine(text, cur)) {
+    // If on a blank line, skip blank lines first
+    while (cur < len && isBlankLine(text, cur)) {
       var info = TU.getLineInfo(text, cur);
       if (info.lineEnd >= len) return len;
       cur = info.lineEnd + 1;
     }
-    // Skip blank lines
-    while (cur < len && isBlankLine(text, cur)) {
+    // Skip non-blank lines
+    while (cur < len && !isBlankLine(text, cur)) {
       var info2 = TU.getLineInfo(text, cur);
       if (info2.lineEnd >= len) return len;
       cur = info2.lineEnd + 1;
     }
-    // Return start of next non-blank line (or end)
+    // Land on the blank line (paragraph boundary) or end of text
     return cur >= len ? len : TU.getLineInfo(text, cur).lineStart;
   }
 
   function paragraphBack(text, pos) {
     if (pos <= 0) return 0;
-    // Move to start of current line first
+    var startOnBlank = isBlankLine(text, pos);
     var cur = TU.getLineInfo(text, pos).lineStart;
-    if (cur > 0) cur--; // go to previous line
-    // Skip blank lines
-    while (cur > 0 && isBlankLine(text, cur)) {
-      cur = TU.getLineInfo(text, cur).lineStart;
-      if (cur > 0) cur--;
-    }
-    // Skip non-blank lines
-    while (cur > 0 && !isBlankLine(text, cur)) {
-      cur = TU.getLineInfo(text, cur).lineStart;
-      if (cur > 0) cur--;
-    }
-    // If we stopped on a blank line, move to the line after it
-    if (cur > 0 || isBlankLine(text, cur)) {
-      if (isBlankLine(text, cur)) {
-        var info = TU.getLineInfo(text, cur);
-        return info.lineEnd < text.length ? info.lineEnd + 1 : cur;
+    if (cur <= 0) return 0;
+    cur--; // go to end of previous line
+    if (startOnBlank) {
+      // Skip remaining blank lines backward
+      while (cur > 0 && isBlankLine(text, cur)) {
+        cur = TU.getLineInfo(text, cur).lineStart;
+        if (cur <= 0) return 0;
+        cur--;
       }
+      // Skip non-blank lines backward
+      while (cur > 0 && !isBlankLine(text, cur)) {
+        cur = TU.getLineInfo(text, cur).lineStart;
+        if (cur <= 0) return 0;
+        cur--;
+      }
+    } else {
+      // Skip non-blank lines backward
+      while (cur > 0 && !isBlankLine(text, cur)) {
+        cur = TU.getLineInfo(text, cur).lineStart;
+        if (cur <= 0) return 0;
+        cur--;
+      }
+    }
+    // Land on the blank line (paragraph boundary) or beginning of text
+    if (cur <= 0) return 0;
+    if (isBlankLine(text, cur)) {
+      return TU.getLineInfo(text, cur).lineStart;
     }
     return 0;
   }

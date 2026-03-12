@@ -133,6 +133,7 @@
     var paddingLeft = parseFloat(computed.paddingLeft) || 0;
     var paddingRight = parseFloat(computed.paddingRight) || 0;
     var contentWidth = el.clientWidth - paddingLeft - paddingRight;
+    if (contentWidth <= 0) return null;
     var ctx = setupMeasureCtx(el);
     return computeVisualLines(el.value, ctx, contentWidth);
   }
@@ -158,6 +159,21 @@
   };
 
   InputHandler.prototype.execute = function (el, command, engine) {
+    var text = el.value;
+    var pos = el.selectionStart;
+
+    console.log('[IH-DEBUG execute] ' + JSON.stringify({
+      commandType: command.type,
+      operator: command.operator,
+      motion: command.motion,
+      count: command.count,
+      entry: command.entry,
+      selectionStart: el.selectionStart,
+      selectionEnd: el.selectionEnd,
+    }));
+
+    console.log('[IH-DEBUG execute pos] ' + JSON.stringify({ pos: pos, textLen: text.length, text: text }));
+
     if (command.type !== CommandType.MOTION ||
         (command.motion !== MotionType.LINE_UP && command.motion !== MotionType.LINE_DOWN)) {
       this._desiredCol = -1;
@@ -186,7 +202,7 @@
         this._doVisualLineEnter(el, engine);
         break;
       case CommandType.VISUAL_OPERATOR:
-        this._doVisualOperator(el, command);
+        this._doVisualOperator(el, command, engine);
         break;
       case CommandType.PASTE:
         this._doPaste(el, false);
@@ -226,6 +242,14 @@
     var pos = el.selectionStart;
     var vLines = isVertical ? getElementVisualLines(el) : null;
 
+    console.log('[IH-DEBUG _doMotion] ' + JSON.stringify({
+      motion: command.motion,
+      pos: pos,
+      count: command.count,
+      char: command.char,
+      isVertical: isVertical,
+    }));
+
     if (isVertical) {
       if (this._desiredCol < 0) {
         if (vLines) {
@@ -248,6 +272,13 @@
       if (newPos > maxPos) newPos = maxPos;
     }
 
+    console.log('[IH-DEBUG _doMotion result] ' + JSON.stringify({
+      motion: command.motion,
+      oldPos: pos,
+      newPos: newPos,
+      charAtNewPos: text[newPos],
+    }));
+
     setCursor(el, newPos);
   };
 
@@ -259,6 +290,10 @@
     var linewise = command.motion === MotionType.LINE_UP || command.motion === MotionType.LINE_DOWN;
     var vLines = linewise ? getElementVisualLines(el) : null;
     var range = MR.resolveMotion(text, pos, command.motion, command.count, true, -1, command.char, vLines);
+    console.log('[IH-DEBUG _doOperatorMotion] ' + JSON.stringify({
+      operator: command.operator, motion: command.motion, pos: pos,
+      from: range.from, to: range.to, linewise: linewise,
+    }));
 
     if (linewise) {
       var startLine = TU.getLineInfo(text, range.from);
@@ -363,19 +398,51 @@
     var pos = el.selectionStart;
     var info = TU.getLineInfo(text, pos);
 
+    console.log('[IH-DEBUG _doInsertEnter] ' + JSON.stringify({
+      entry: command.entry, pos: pos,
+      lineStart: info.lineStart, lineEnd: info.lineEnd,
+    }));
+
     switch (command.entry) {
       case InsertEntry.I_LOWER:
         break;
       case InsertEntry.A_LOWER:
         setCursor(el, Math.min(pos + 1, info.lineEnd));
         break;
-      case InsertEntry.I_UPPER:
-        var firstNonBlank = info.lineText.match(/^\s*/);
-        setCursor(el, info.lineStart + (firstNonBlank ? firstNonBlank[0].length : 0));
+      case InsertEntry.I_UPPER: {
+        var vLinesI = getElementVisualLines(el);
+        if (vLinesI) {
+          var viI = TU.findVisualLine(vLinesI, pos);
+          var vStartI = vLinesI[viI].start;
+          var vTextI = text.substring(vStartI, vLinesI[viI].end);
+          var mI = vTextI.match(/^\s*/);
+          console.log('[IH-DEBUG I_UPPER] ' + JSON.stringify({
+            pos: pos, viI: viI, vStart: vStartI, vEnd: vLinesI[viI].end,
+            target: vStartI + (mI ? mI[0].length : 0),
+          }));
+          setCursor(el, vStartI + (mI ? mI[0].length : 0));
+        } else {
+          var firstNonBlank = info.lineText.match(/^\s*/);
+          setCursor(el, info.lineStart + (firstNonBlank ? firstNonBlank[0].length : 0));
+        }
         break;
-      case InsertEntry.A_UPPER:
-        setCursor(el, info.lineEnd);
+      }
+      case InsertEntry.A_UPPER: {
+        var vLinesA = getElementVisualLines(el);
+        if (vLinesA) {
+          var viA = TU.findVisualLine(vLinesA, pos);
+          var vEndA = vLinesA[viA].end;
+          var targetA = vEndA < info.lineEnd ? vEndA - 1 : vEndA;
+          console.log('[IH-DEBUG A_UPPER] ' + JSON.stringify({
+            pos: pos, viA: viA, vStart: vLinesA[viA].start, vEnd: vEndA,
+            lineEnd: info.lineEnd, target: targetA,
+          }));
+          setCursor(el, targetA);
+        } else {
+          setCursor(el, info.lineEnd);
+        }
         break;
+      }
       case InsertEntry.O_LOWER: {
         var vLinesO = getElementVisualLines(el);
         if (vLinesO) {
@@ -429,6 +496,9 @@
     if (vLines) {
       var vi = TU.findVisualLine(vLines, pos);
       var vl = vLines[vi];
+      console.log('[IH-DEBUG _doVisualLineEnter vLines] ' + JSON.stringify({
+        pos: pos, vi: vi, vStart: vl.start, vEnd: vl.end,
+      }));
       setSelection(el, vl.start, vl.end);
     } else {
       var info = TU.getLineInfo(el.value, pos);
@@ -504,18 +574,39 @@
     setSelection(el, range.from, range.to);
   };
 
-  InputHandler.prototype._doVisualOperator = function (el, command) {
+  InputHandler.prototype._doVisualOperator = function (el, command, engine) {
     var text = el.value;
     var start = el.selectionStart;
     var end = el.selectionEnd;
     var regType = command.lineWise ? 'line' : 'char';
 
     if (command.lineWise) {
-      var info = TU.getLineInfo(text, start);
-      start = info.lineStart;
-      var endInfo = TU.getLineInfo(text, Math.max(end - 1, start));
-      end = endInfo.lineEnd;
-      if (end < text.length) end++;
+      var vLines = getElementVisualLines(el);
+      if (vLines && engine) {
+        var anchor = engine.visualAnchor;
+        var head = engine.visualHead;
+        var anchorVi = TU.findVisualLine(vLines, anchor);
+        var headVi = TU.findVisualLine(vLines, head);
+        var startVi = Math.min(anchorVi, headVi);
+        var endVi = Math.max(anchorVi, headVi);
+        start = vLines[startVi].start;
+        end = vLines[endVi].end;
+        if (end < text.length) end++;
+        else if (start > 0) start--;
+        console.log('[IH-DEBUG _doVisualOperator lineWise vLines] ' + JSON.stringify({
+          anchor: anchor, head: head, anchorVi: anchorVi, headVi: headVi,
+          from: start, to: end,
+        }));
+      } else {
+        var info = TU.getLineInfo(text, start);
+        start = info.lineStart;
+        var endInfo = TU.getLineInfo(text, Math.max(end - 1, start));
+        end = endInfo.lineEnd;
+        if (end < text.length) end++;
+        console.log('[IH-DEBUG _doVisualOperator lineWise real] ' + JSON.stringify({
+          from: start, to: end,
+        }));
+      }
     }
 
     var selected = text.substring(start, end);
@@ -648,9 +739,20 @@
   // ── Escape ──────────────────────────────────────────
 
   InputHandler.prototype._doEscape = function (el, command) {
+    console.log('[IH-DEBUG _doEscape] ' + JSON.stringify({
+      fromMode: command.fromMode, pos: el.selectionStart,
+      visualHead: command.visualHead,
+    }));
     if (command.fromMode === 'INSERT') {
       var pos = el.selectionStart;
-      var lineStart = TU.getLineInfo(el.value, pos).lineStart;
+      var vLines = getElementVisualLines(el);
+      var lineStart;
+      if (vLines) {
+        var vi = TU.findVisualLine(vLines, pos);
+        lineStart = vLines[vi].start;
+      } else {
+        lineStart = TU.getLineInfo(el.value, pos).lineStart;
+      }
       if (pos > lineStart) setCursor(el, pos - 1);
     } else if (command.fromMode === 'NORMAL') {
       el.blur();

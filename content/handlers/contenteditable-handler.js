@@ -717,12 +717,13 @@
         var vLinesA = computeCEVisualLines(el, text);
         var viA = TU.findVisualLine(vLinesA, pos);
         var vEndA = vLinesA[viA].end;
-        // For mid-block visual lines, end points to the first char of the
-        // next visual line — the browser renders the caret on the next line.
-        // Use end - 1 to keep cursor on the current visual line.
-        // At block boundaries (end === lineEnd), end maps to the block's
-        // \n separator which renders correctly at the line's end.
-        setCursorAt(el, vEndA < info.lineEnd ? vEndA - 1 : vEndA);
+        console.log('[CE-DEBUG A_UPPER] ' + JSON.stringify({
+          pos: pos, viA: viA, vEnd: vEndA, lineEnd: info.lineEnd,
+        }));
+        // A enters insert mode — cursor goes AFTER last char of visual line.
+        // For block boundaries (end === lineEnd), end is the \n separator.
+        // For mid-block wraps, end is the position after the last char.
+        setCursorAt(el, vEndA);
         break;
       }
       case InsertEntry.O_LOWER: {
@@ -1031,7 +1032,14 @@
 
   ContentEditableHandler.prototype._doEscape = function (el, text, pos, command) {
     if (command.fromMode === 'INSERT') {
-      var lineStart = TU.getLineInfo(text, pos).lineStart;
+      var vLines = computeCEVisualLines(el, text);
+      var lineStart;
+      if (vLines && vLines.length > 0) {
+        var vi = TU.findVisualLine(vLines, pos);
+        lineStart = vLines[vi].start;
+      } else {
+        lineStart = TU.getLineInfo(text, pos).lineStart;
+      }
       if (pos > lineStart) setCursorAt(el, pos - 1);
     } else if (command.fromMode === 'NORMAL') {
       el.blur();
