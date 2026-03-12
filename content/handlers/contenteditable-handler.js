@@ -419,7 +419,9 @@
           }
         }
 
-        lines.push({ start: lineStart, end: flatPos + blockLen });
+        if (lineStart < flatPos + blockLen) {
+          lines.push({ start: lineStart, end: flatPos + blockLen });
+        }
       }
 
       flatPos += blockLen;
@@ -1109,6 +1111,17 @@
   ContentEditableHandler.prototype.getCursorRect = function (el, overridePos) {
     var text = getFlatText(el);
     var pos = overridePos != null ? overridePos : flatOffsetFromSelection(el);
+
+    // Some editors (e.g. Outlook) normalize the cursor past the last char
+    // of a block, landing on a \n separator or past the end of text.
+    // Clamp back to the previous character so the overlay stays on the
+    // correct line instead of jumping to the left edge.
+    if (overridePos == null && pos > 0) {
+      var atNewlineOrEnd = pos >= text.length || text[pos] === '\n';
+      if (atNewlineOrEnd && text[pos - 1] !== '\n') {
+        pos = pos - 1;
+      }
+    }
 
     // For empty blocks (<p><br></p>), use the block element's bounding rect
     var bInfo = _blockForPos(el, pos);
