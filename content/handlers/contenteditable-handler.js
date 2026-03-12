@@ -247,6 +247,11 @@
               return;
             }
             remaining--;
+            if (remaining === 0) {
+              // Position right after this BR (the \n was consumed)
+              result = { node: child.parentNode, offset: _childIdx(child) + 1 };
+              return;
+            }
           }
         } else if (child.nodeType === 1) {
           walk(child);
@@ -419,7 +424,7 @@
           }
         }
 
-        if (lineStart < flatPos + blockLen) {
+        if (lineStart <= flatPos + blockLen) {
           lines.push({ start: lineStart, end: flatPos + blockLen });
         }
       }
