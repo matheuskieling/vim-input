@@ -477,6 +477,21 @@
     var text = getFlatText(el);
     var pos = flatOffsetFromSelection(el);
 
+    // FIX: Adjust pos off \n for non-escape commands.
+    // WHY: Editors like Outlook normalize setCursorAt(lastChar) to
+    // end-of-text-node, which maps to the \n separator in our flat model.
+    // The cursor is visually correct (getCursorRect adjusts), but
+    // operations reading pos would see \n and misbehave (a jumps to
+    // next line, h doesn't move). Adjusting to pos-1 makes all
+    // operations see the last real char instead.
+    // In Slack/Jira the cursor is never on \n in NORMAL mode, so this
+    // is a no-op for those editors.
+    // WARNING: Removing this breaks h/l/a at block boundaries in Outlook.
+    var isEscapeFromInsert = command.type === CommandType.ESCAPE && command.fromMode === 'INSERT';
+    if (!isEscapeFromInsert && pos > 0 && text[pos] === '\n') {
+      pos = pos - 1;
+    }
+
     console.log('[CE exec] ' + JSON.stringify({ pos: pos, len: text.length, html: el.innerHTML.substring(0, 120) }));
 
     if (command.type !== CommandType.MOTION ||
@@ -665,6 +680,7 @@
 
   ContentEditableHandler.prototype._doInsertEnter = function (el, text, pos, command) {
     this._saveUndo(el);
+    this._lastInsertEntry = command.entry;
 
     var info = TU.getLineInfo(text, pos);
     switch (command.entry) {
@@ -1041,13 +1057,19 @@
       var lineStart;
       if (vLines && vLines.length > 0) {
         var vi = TU.findVisualLine(vLines, pos);
-        // At a soft-wrap boundary, pos equals the start of vLine[vi] AND
-        // the end of vLine[vi-1]. The cursor was logically at the end of
-        // the previous visual line (e.g., after A + lineboundary modify).
-        // Prefer the previous visual line so Escape moves back correctly.
-        if (vi > 0 && pos === vLines[vi].start && vLines[vi - 1].end === pos) {
+        // FIX: At a soft-wrap boundary, pos equals both start of vLine[vi]
+        // and end of vLine[vi-1]. Only prefer the previous visual line when
+        // we entered INSERT via a/A (cursor was at end of line).
+        // For I/I_UPPER the cursor is at the START of the current line —
+        // switching to the previous line would make Escape jump up a line.
+        // WHY: I<esc> on a soft-wrapped line in Jira was jumping to line above.
+        // WARNING: Removing the entry check breaks I<esc> on soft wraps.
+        var enteredViaAppend = this._lastInsertEntry === InsertEntry.A_LOWER ||
+            this._lastInsertEntry === InsertEntry.A_UPPER;
+        if (enteredViaAppend && vi > 0 && pos === vLines[vi].start && vLines[vi - 1].end === pos) {
           vi = vi - 1;
         }
+        this._lastInsertEntry = null;
         lineStart = vLines[vi].start;
       } else {
         lineStart = TU.getLineInfo(text, pos).lineStart;
