@@ -243,7 +243,7 @@
         } else if (child.nodeName === 'BR') {
           if (!_isPlaceholderBR(child)) {
             if (remaining === 0) {
-              result = { node: child.parentNode, offset: _childIdx(child) + 1 };
+              result = { node: child.parentNode, offset: _childIdx(child) };
               return;
             }
             remaining--;
@@ -692,7 +692,10 @@
       case InsertEntry.I_LOWER:
         break;
       case InsertEntry.A_LOWER:
-        setCursorAt(el, Math.min(pos + 1, text.length));
+        // On an empty line, "a" stays put (same as "i"); otherwise advance by 1.
+        if (info.lineStart < info.lineEnd) {
+          setCursorAt(el, Math.min(pos + 1, text.length));
+        }
         break;
       case InsertEntry.I_UPPER: {
         var vLinesI = computeCEVisualLines(el, text);
@@ -778,12 +781,12 @@
 
   // Set a linewise selection from startVi to endVi (visual line indices).
   // Selects visual line ranges rather than entire blocks.
-  function _setLinewiseSelection(el, startVi, endVi, vLines) {
+  function _setLinewiseSelection(el, startVi, endVi, vLines, text) {
     var startLine = vLines[startVi];
     var endLine = vLines[endVi];
 
-    // For single empty visual lines, use block-level selection so the
-    // highlight is visible even when there is no text.
+    // For single empty visual lines in separate empty blocks, use block-level
+    // selection so the highlight is visible even when there is no text.
     if (startVi === endVi && startLine.start === startLine.end) {
       var bInfo = _blockForPos(el, startLine.start);
       if (bInfo && bInfo.isEmpty && bInfo.block.nodeType === 1 && bInfo.block.parentNode === el) {
@@ -797,8 +800,14 @@
       }
     }
 
-    // Select the visual line text range
-    setSelectionRange(el, startLine.start, endLine.end);
+    // When the end visual line is empty (e.g. intra-block hardBreak),
+    // extend selection past the \n so the browser highlights the line.
+    var end = endLine.end;
+    if (endLine.start === endLine.end && end < text.length) {
+      end = endLine.end + 1;
+    }
+
+    setSelectionRange(el, startLine.start, end);
   }
 
   ContentEditableHandler.prototype._doVisualLineEnter = function (el, pos, engine) {
@@ -807,7 +816,7 @@
     engine.visualHead = pos;
     var vLines = computeCEVisualLines(el, text);
     var vi = TU.findVisualLine(vLines, pos);
-    _setLinewiseSelection(el, vi, vi, vLines);
+    _setLinewiseSelection(el, vi, vi, vLines, text);
   };
 
   ContentEditableHandler.prototype.extendVisualSelection = function (el, command, engine) {
@@ -837,9 +846,9 @@
       var anchorVi = TU.findVisualLine(vLines, anchor);
       var headVi = TU.findVisualLine(vLines, newPos);
       if (newPos >= anchor) {
-        _setLinewiseSelection(el, anchorVi, headVi, vLines);
+        _setLinewiseSelection(el, anchorVi, headVi, vLines, text);
       } else {
-        _setLinewiseSelection(el, headVi, anchorVi, vLines);
+        _setLinewiseSelection(el, headVi, anchorVi, vLines, text);
       }
     } else {
       if (newPos >= anchor) {
