@@ -162,7 +162,7 @@
     var text = el.value;
     var pos = el.selectionStart;
 
-    console.log('[IH exec] ' + JSON.stringify({ type: command.type, op: command.operator, m: command.motion, entry: command.entry, pos: pos }));
+    console.log('[IH exec] ' + JSON.stringify({ type: command.type, op: command.operator, m: command.motion, entry: command.entry, pos: pos, len: text.length, val: text }));
 
     if (command.type !== CommandType.MOTION ||
         (command.motion !== MotionType.LINE_UP && command.motion !== MotionType.LINE_DOWN)) {
@@ -707,13 +707,23 @@
     console.log('[IH esc] ' + JSON.stringify({ from: command.fromMode, pos: el.selectionStart }));
     if (command.fromMode === 'INSERT') {
       var pos = el.selectionStart;
+      // FIX: When pos is on \n (after A or a at end of line), use pos-1
+      // for the visual line lookup so findVisualLine finds the correct line.
+      // WHY: \n positions fall in a gap between visual lines, causing
+      // findVisualLine to return the last visual line of the entire text.
+      // The original pos is still used for cursor movement (pos-1 = last char).
+      // WARNING: Removing this breaks A<esc> and a<esc> on last visual lines.
+      var lookupPos = pos;
+      if (lookupPos > 0 && el.value[lookupPos] === '\n') {
+        lookupPos = lookupPos - 1;
+      }
       var vLines = getElementVisualLines(el);
       var lineStart;
       if (vLines) {
-        var vi = TU.findVisualLine(vLines, pos);
+        var vi = TU.findVisualLine(vLines, lookupPos);
         lineStart = vLines[vi].start;
       } else {
-        lineStart = TU.getLineInfo(el.value, pos).lineStart;
+        lineStart = TU.getLineInfo(el.value, lookupPos).lineStart;
       }
       if (pos > lineStart) setCursor(el, pos - 1);
     } else if (command.fromMode === 'NORMAL') {

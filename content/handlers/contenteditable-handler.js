@@ -492,7 +492,7 @@
       pos = pos - 1;
     }
 
-    console.log('[CE exec] ' + JSON.stringify({ pos: pos, len: text.length, html: el.innerHTML.substring(0, 120) }));
+    console.log('[CE exec] ' + JSON.stringify({ pos: pos, len: text.length, html: el.innerHTML }));
 
     if (command.type !== CommandType.MOTION ||
         (command.motion !== MotionType.LINE_UP && command.motion !== MotionType.LINE_DOWN)) {
