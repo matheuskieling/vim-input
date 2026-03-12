@@ -342,6 +342,14 @@
       return;
     }
 
+    // FIX: Let Tab / Shift+Tab pass through in non-insert modes
+    // WHY: User expects native browser focus cycling (tab between inputs) outside insert mode
+    // WARNING: Removing this will cause Tab to be swallowed in normal/visual modes instead of moving focus
+    if (key === 'Tab') {
+      _markFocusSteal();
+      return;
+    }
+
     _blocked = true;
     killEvent(e);
 
