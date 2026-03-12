@@ -88,25 +88,11 @@
   function getFlatText(el) {
     var blocks = _getBlocks(el);
     var parts = [];
-    var blockDebug = [];
     for (var i = 0; i < blocks.length; i++) {
-      var bt = _blockText(blocks[i]);
-      parts.push(bt);
-      blockDebug.push({
-        idx: i,
-        tag: blocks[i].nodeName,
-        innerHTML: blocks[i].innerHTML ? blocks[i].innerHTML.substring(0, 60) : '(text)',
-        blockText: JSON.stringify(bt),
-        blockTextLen: bt.length,
-      });
+      parts.push(_blockText(blocks[i]));
     }
     var result = parts.join('\n');
-    console.log('[CE-DEBUG getFlatText] ' + JSON.stringify({
-      blockCount: blocks.length,
-      blocks: blockDebug,
-      flatText: result,
-      flatTextLen: result.length,
-    }));
+    console.log('[CE getFlatText] ' + JSON.stringify({ len: result.length, blocks: blocks.length }));
     return result;
   }
 
@@ -201,12 +187,7 @@
     if (!sel.rangeCount) return 0;
     var range = sel.getRangeAt(0);
     var result = _flatOffsetAt(el, range.startContainer, range.startOffset);
-    console.log('[CE-DEBUG flatOffsetFromSelection] ' + JSON.stringify({
-      startContainer: range.startContainer.nodeName,
-      startContainerText: range.startContainer.nodeType === 3 ? range.startContainer.textContent.substring(0, 40) : range.startContainer.innerHTML ? range.startContainer.innerHTML.substring(0, 40) : '?',
-      startOffset: range.startOffset,
-      result: result,
-    }));
+    console.log('[CE flatOffset] ' + JSON.stringify({ pos: result }));
     return result;
   }
 
@@ -301,12 +282,7 @@
 
   function setCursorAt(el, flatOffset) {
     var point = selectionFromFlatOffset(el, flatOffset);
-    console.log('[CE-DEBUG setCursorAt] ' + JSON.stringify({
-      flatOffset: flatOffset,
-      pointNode: point.node.nodeName,
-      pointNodeText: point.node.nodeType === 3 ? point.node.textContent.substring(0, 40) : point.node.innerHTML ? point.node.innerHTML.substring(0, 40) : '?',
-      pointOffset: point.offset,
-    }));
+    console.log('[CE setCursorAt] ' + JSON.stringify({ pos: flatOffset }));
     var sel = window.getSelection();
     var range = document.createRange();
     range.setStart(point.node, point.offset);
@@ -364,6 +340,21 @@
 
   function computeCEVisualLines(el, text) {
     if (text.length === 0) return [{ start: 0, end: 0 }];
+
+    // Guard for test environments (JSDOM) where Range.getBoundingClientRect
+    // is not available. Fall back to one visual line per real line.
+    var probe = document.createRange();
+    if (typeof probe.getBoundingClientRect !== 'function') {
+      var fallback = [];
+      var fStart = 0;
+      for (var fi = 0; fi <= text.length; fi++) {
+        if (fi === text.length || text[fi] === '\n') {
+          fallback.push({ start: fStart, end: fi });
+          fStart = fi + 1;
+        }
+      }
+      return fallback.length > 0 ? fallback : [{ start: 0, end: 0 }];
+    }
 
     var blocks = _getBlocks(el);
     var lines = [];
@@ -481,28 +472,12 @@
   };
 
   ContentEditableHandler.prototype.execute = function (el, command, engine) {
-    var sel = window.getSelection();
-    var selDebug = sel.rangeCount ? {
-      anchorNode: sel.anchorNode ? sel.anchorNode.nodeName : null,
-      anchorOffset: sel.anchorOffset,
-      focusNode: sel.focusNode ? sel.focusNode.nodeName : null,
-      focusOffset: sel.focusOffset,
-      isCollapsed: sel.isCollapsed,
-    } : 'no-range';
-    console.log('[CE-DEBUG execute] ' + JSON.stringify({
-      commandType: command.type,
-      operator: command.operator,
-      motion: command.motion,
-      count: command.count,
-      entry: command.entry,
-      selection: selDebug,
-      innerHTML: el.innerHTML,
-    }));
+    console.log('[CE exec] ' + JSON.stringify({ type: command.type, op: command.operator, m: command.motion, entry: command.entry }));
 
     var text = getFlatText(el);
     var pos = flatOffsetFromSelection(el);
 
-    console.log('[CE-DEBUG execute pos] ' + JSON.stringify({ pos: pos, textLen: text.length, flatText: text }));
+    console.log('[CE exec] ' + JSON.stringify({ pos: pos, len: text.length, html: el.innerHTML.substring(0, 120) }));
 
     if (command.type !== CommandType.MOTION ||
         (command.motion !== MotionType.LINE_UP && command.motion !== MotionType.LINE_DOWN)) {
@@ -566,18 +541,20 @@
 
   ContentEditableHandler.prototype._doMotion = function (el, text, pos, command) {
     var isVertical = command.motion === MotionType.LINE_UP || command.motion === MotionType.LINE_DOWN;
+    var isHL = command.motion === MotionType.CHAR_LEFT || command.motion === MotionType.CHAR_RIGHT;
     var vLines = null;
 
-    console.log('[CE-DEBUG _doMotion] ' + JSON.stringify({
-      motion: command.motion,
-      pos: pos,
-      count: command.count,
-      char: command.char,
-      isVertical: isVertical,
-    }));
+    console.log('[CE motion] ' + JSON.stringify({ m: command.motion, pos: pos }));
+
+    // FIX: Compute vLines for h/l too so they clamp to visual line boundaries.
+    // WHY: h/l crossing visual lines causes cursor to land on \n separators
+    // or render on wrong visual line in contenteditable.
+    // WARNING: Removing isHL here lets h/l cross visual line boundaries.
+    if (isVertical || isHL) {
+      vLines = computeCEVisualLines(el, text);
+    }
 
     if (isVertical) {
-      vLines = computeCEVisualLines(el, text);
       if (this._desiredCol < 0) {
         var vi = TU.findVisualLine(vLines, pos);
         this._desiredCol = pos - vLines[vi].start;
@@ -594,12 +571,7 @@
       if (newPos > maxPos) newPos = maxPos;
     }
 
-    console.log('[CE-DEBUG _doMotion result] ' + JSON.stringify({
-      motion: command.motion,
-      oldPos: pos,
-      newPos: newPos,
-      charAtNewPos: text[newPos],
-    }));
+    console.log('[CE motion] ' + JSON.stringify({ from: pos, to: newPos }));
 
     setCursorAt(el, newPos);
   };
@@ -699,9 +671,25 @@
       case InsertEntry.I_LOWER:
         break;
       case InsertEntry.A_LOWER:
-        // On an empty line, "a" stays put (same as "i"); otherwise advance by 1.
+        // FIX: Visual-line-aware "a" — at visual line boundary, use
+        // sel.modify to keep cursor on current visual line.
+        // WHY: setCursorAt(pos+1) at a visual line boundary renders on the
+        // next visual line due to caret affinity. A<esc>a was jumping to
+        // the next line on Jira/Slack/Outlook.
+        // WARNING: Removing the vLines check causes a to jump to next visual line.
         if (info.lineStart < info.lineEnd) {
-          setCursorAt(el, Math.min(pos + 1, text.length));
+          var vLinesAl = computeCEVisualLines(el, text);
+          var viAl = TU.findVisualLine(vLinesAl, pos);
+          var vEndAl = vLinesAl[viAl].end;
+          if (pos + 1 >= vEndAl) {
+            // At or past visual line end — use lineboundary modify to get
+            // end-of-visual-line position with correct caret affinity.
+            setCursorAt(el, pos);
+            var selAl = window.getSelection();
+            selAl.modify('move', 'forward', 'lineboundary');
+          } else {
+            setCursorAt(el, Math.min(pos + 1, text.length));
+          }
         }
         break;
       case InsertEntry.I_UPPER: {
@@ -717,13 +705,19 @@
         var vLinesA = computeCEVisualLines(el, text);
         var viA = TU.findVisualLine(vLinesA, pos);
         var vEndA = vLinesA[viA].end;
-        console.log('[CE-DEBUG A_UPPER] ' + JSON.stringify({
-          pos: pos, viA: viA, vEnd: vEndA, lineEnd: info.lineEnd,
-        }));
-        // A enters insert mode — cursor goes AFTER last char of visual line.
-        // For block boundaries (end === lineEnd), end is the \n separator.
-        // For mid-block wraps, end is the position after the last char.
-        setCursorAt(el, vEndA);
+        console.log('[CE A] ' + JSON.stringify({ pos: pos, vEnd: vEndA, lineEnd: info.lineEnd }));
+        if (vEndA < info.lineEnd) {
+          // Mid-block soft wrap: setting cursor to vEnd renders on the
+          // next visual line. Instead, place on last char of this line
+          // then use Selection.modify to reach the true end-of-line
+          // with correct line affinity (stays on current visual line).
+          setCursorAt(el, vEndA - 1);
+          var selA = window.getSelection();
+          selA.modify('move', 'forward', 'lineboundary');
+        } else {
+          // Block boundary: end is the \n separator, renders correctly.
+          setCursorAt(el, vEndA);
+        }
         break;
       }
       case InsertEntry.O_LOWER: {
@@ -733,11 +727,7 @@
         var midBlockO = vEnd < info.lineEnd;
         setCursorAt(el, vEnd);
         document.dispatchEvent(new Event('selectionchange'));
-        console.log('[CE-DEBUG O_LOWER] ' + JSON.stringify({
-          vEnd: vEnd,
-          infoLineEnd: info.lineEnd,
-          midBlock: midBlockO,
-        }));
+        console.log('[CE o] ' + JSON.stringify({ vEnd: vEnd, midBlock: midBlockO }));
         _execCmd('insertParagraph');
         if (midBlockO) {
           // Mid-block split: first insertParagraph split the block,
@@ -758,11 +748,7 @@
         var midBlockU = vStart > info.lineStart;
         setCursorAt(el, vStart);
         document.dispatchEvent(new Event('selectionchange'));
-        console.log('[CE-DEBUG O_UPPER] ' + JSON.stringify({
-          vStart: vStart,
-          infoLineStart: info.lineStart,
-          midBlock: midBlockU,
-        }));
+        console.log('[CE O] ' + JSON.stringify({ vStart: vStart, midBlock: midBlockU }));
         _execCmd('insertParagraph');
         if (midBlockU) {
           // Mid-block split: first insertParagraph split the block,
@@ -1032,10 +1018,36 @@
 
   ContentEditableHandler.prototype._doEscape = function (el, text, pos, command) {
     if (command.fromMode === 'INSERT') {
+      // FIX: In NORMAL mode the cursor can't sit on a \n separator.
+      // Use visual lines to find the last real char of the preceding line.
+      // WHY: \n positions are gaps between visual lines (block boundaries).
+      // sel.modify('backward') doesn't work in Outlook. setCursorAt to
+      // the last char of the visual line ending at \n is reliable.
+      // WARNING: Removing this leaves cursor on \n causing h/a to misbehave.
+      if (pos > 0 && text[pos] === '\n') {
+        var vLinesNl = computeCEVisualLines(el, text);
+        var nlTarget = pos - 1;
+        for (var ni = 0; ni < vLinesNl.length; ni++) {
+          if (vLinesNl[ni].end >= pos) {
+            nlTarget = Math.max(vLinesNl[ni].start, vLinesNl[ni].end - 1);
+            break;
+          }
+        }
+        console.log('[CE esc \\n] ' + JSON.stringify({ pos: pos, target: nlTarget }));
+        setCursorAt(el, nlTarget);
+        return;
+      }
       var vLines = computeCEVisualLines(el, text);
       var lineStart;
       if (vLines && vLines.length > 0) {
         var vi = TU.findVisualLine(vLines, pos);
+        // At a soft-wrap boundary, pos equals the start of vLine[vi] AND
+        // the end of vLine[vi-1]. The cursor was logically at the end of
+        // the previous visual line (e.g., after A + lineboundary modify).
+        // Prefer the previous visual line so Escape moves back correctly.
+        if (vi > 0 && pos === vLines[vi].start && vLines[vi - 1].end === pos) {
+          vi = vi - 1;
+        }
         lineStart = vLines[vi].start;
       } else {
         lineStart = TU.getLineInfo(text, pos).lineStart;
@@ -1143,7 +1155,7 @@
       if (bRect.height > 0) {
         var cs = window.getComputedStyle(bInfo.block);
         var fw = parseFloat(cs.fontSize) * 0.6;
-        console.log('[CE-DEBUG getCursorRect] empty block path ' + JSON.stringify({ pos: pos, y: bRect.top, h: bRect.height }));
+        console.log('[CE rect] ' + JSON.stringify({ path: 'empty-block', pos: pos }));
         return { x: bRect.left, y: bRect.top, width: fw, height: bRect.height };
       }
     }
@@ -1169,7 +1181,7 @@
         range.setEnd(end.node, end.offset);
         var rect = range.getBoundingClientRect();
         if (rect.width > 0 && rect.height > 0) {
-          console.log('[CE-DEBUG getCursorRect] char span path ' + JSON.stringify({ pos: pos, x: rect.left, y: rect.top }));
+          console.log('[CE rect] ' + JSON.stringify({ path: 'char', pos: pos, y: rect.top }));
           return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
         }
       }
@@ -1226,7 +1238,7 @@
         var nlBorderLeft = parseInt(nlCS.borderLeftWidth) || 0;
         var nlPadLeft = parseInt(nlCS.paddingLeft) || 0;
 
-        console.log('[CE-DEBUG getCursorRect] newline offset path ' + JSON.stringify({ pos: pos, refPos: nlRefPos, nlCount: nlCount, dir: nlDir }));
+        console.log('[CE rect] ' + JSON.stringify({ path: 'nl-offset', pos: pos, nlCount: nlCount }));
         return {
           x: nlElRect.left + nlBorderLeft + nlPadLeft,
           y: nlRef.top + nlDir * nlCount * nlLineHeight,
@@ -1249,7 +1261,7 @@
           for (var abI = 0; abI < pos && abI < text.length; abI++) {
             if (text[abI] === '\n') abLine++;
           }
-          console.log('[CE-DEBUG getCursorRect] all-newline block path ' + JSON.stringify({ pos: pos, line: abLine }));
+          console.log('[CE rect] ' + JSON.stringify({ path: 'all-nl', pos: pos, line: abLine }));
           return {
             x: abRect.left + abBL + abPL,
             y: abRect.top + abBT + abPT + abLine * nlLineHeight,
@@ -1270,7 +1282,7 @@
     if (cRect.height > 0) {
       var computed = window.getComputedStyle(el);
       var fw2 = parseFloat(computed.fontSize) * 0.6;
-      console.log('[CE-DEBUG getCursorRect] collapsed range path ' + JSON.stringify({ pos: pos, x: cRect.left, y: cRect.top }));
+      console.log('[CE rect] ' + JSON.stringify({ path: 'collapsed', pos: pos, y: cRect.top }));
       return { x: cRect.left, y: cRect.top, width: fw2, height: cRect.height };
     }
 
@@ -1283,12 +1295,12 @@
       if (rect2.height > 0) {
         var computed2 = window.getComputedStyle(el);
         var fw3 = parseFloat(computed2.fontSize) * 0.6;
-        console.log('[CE-DEBUG getCursorRect] selection range path ' + JSON.stringify({ pos: pos, x: rect2.left, y: rect2.top }));
+        console.log('[CE rect] ' + JSON.stringify({ path: 'sel-range', pos: pos, y: rect2.top }));
         return { x: rect2.left, y: rect2.top, width: fw3, height: rect2.height };
       }
     }
 
-    console.log('[CE-DEBUG getCursorRect] ULTIMATE FALLBACK ' + JSON.stringify({ pos: pos }));
+    console.log('[CE rect] ' + JSON.stringify({ path: 'fallback', pos: pos }));
     var elRect = el.getBoundingClientRect();
     var csf = window.getComputedStyle(el);
     var fs = parseFloat(csf.fontSize) || 16;

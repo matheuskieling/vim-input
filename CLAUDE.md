@@ -60,3 +60,33 @@ All content scripts share state via `window.InputVim` namespace. Scripts are loa
 - **Handler selection**: `ElementDetector.getHandler(el)` returns `InputHandler` or `ContentEditableHandler` based on element type. Both implement the same interface: `execute()`, `extendVisualSelection()`, `selectTextObject()`, `getCursorRect()`, `ensureCursorVisible()`, `flashYank()`.
 - **Settings**: `Settings` module is single source of truth. Stored in `chrome.storage.sync`. The `data-input-vim` attribute on active elements reflects the current mode.
 - **Shared text logic**: All word motions, text objects, and motion resolution live in `TextUtils` and `MotionResolver`. Changes to motion/text-object logic only need to be made once.
+
+## ⚠️ CRITICAL: Fix Comments and Code Awareness (MANDATORY)
+
+**This is the highest-priority rule in this file. It overrides all other behavior guidelines.**
+
+### When applying a fix requested by the user:
+
+You MUST leave a comment directly above the changed code block explaining:
+1. **WHAT** the fix does (brief)
+2. **WHY** it was needed — the user-reported problem or bug that motivated it
+3. **WHAT COULD BREAK** if this code is changed or removed
+
+Format:
+```js
+// FIX: <what this does>
+// WHY: <the problem the user reported that led to this fix>
+// WARNING: Changing/removing this may cause <consequence>
+```
+
+### When modifying code that already has a fix comment:
+
+Before making ANY change to code that has a `// FIX:` or `// WARNING:` comment, you MUST:
+1. **Read** the existing fix comment in full
+2. **Tell the user** explicitly: what the previous fix was, why it was put there, and what risks come from changing it
+3. **Ask for confirmation** before proceeding if there is any chance the new change could regress the old fix
+4. **Preserve or update** the fix comment — never silently delete it. If the fix is no longer needed, explain why to the user and get confirmation before removing the comment.
+
+### Why this matters:
+
+Fixes in this codebase often address subtle browser-specific bugs, focus-steal edge cases, and contenteditable quirks that are extremely hard to reproduce and debug. Silently overwriting a fix causes regressions that waste hours of the user's time. The comments are the project's institutional memory — treat them as load-bearing.

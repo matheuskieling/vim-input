@@ -162,17 +162,7 @@
     var text = el.value;
     var pos = el.selectionStart;
 
-    console.log('[IH-DEBUG execute] ' + JSON.stringify({
-      commandType: command.type,
-      operator: command.operator,
-      motion: command.motion,
-      count: command.count,
-      entry: command.entry,
-      selectionStart: el.selectionStart,
-      selectionEnd: el.selectionEnd,
-    }));
-
-    console.log('[IH-DEBUG execute pos] ' + JSON.stringify({ pos: pos, textLen: text.length, text: text }));
+    console.log('[IH exec] ' + JSON.stringify({ type: command.type, op: command.operator, m: command.motion, entry: command.entry, pos: pos }));
 
     if (command.type !== CommandType.MOTION ||
         (command.motion !== MotionType.LINE_UP && command.motion !== MotionType.LINE_DOWN)) {
@@ -238,17 +228,16 @@
 
   InputHandler.prototype._doMotion = function (el, command) {
     var isVertical = command.motion === MotionType.LINE_UP || command.motion === MotionType.LINE_DOWN;
+    var isHL = command.motion === MotionType.CHAR_LEFT || command.motion === MotionType.CHAR_RIGHT;
     var text = el.value;
     var pos = el.selectionStart;
-    var vLines = isVertical ? getElementVisualLines(el) : null;
+    // FIX: Compute vLines for h/l too so they clamp to visual line boundaries.
+    // WHY: h/l should not cross visual lines, matching the behavior of not
+    // crossing real lines.
+    // WARNING: Removing isHL here lets h/l cross visual line boundaries.
+    var vLines = (isVertical || isHL) ? getElementVisualLines(el) : null;
 
-    console.log('[IH-DEBUG _doMotion] ' + JSON.stringify({
-      motion: command.motion,
-      pos: pos,
-      count: command.count,
-      char: command.char,
-      isVertical: isVertical,
-    }));
+    console.log('[IH motion] ' + JSON.stringify({ m: command.motion, pos: pos }));
 
     if (isVertical) {
       if (this._desiredCol < 0) {
@@ -272,12 +261,7 @@
       if (newPos > maxPos) newPos = maxPos;
     }
 
-    console.log('[IH-DEBUG _doMotion result] ' + JSON.stringify({
-      motion: command.motion,
-      oldPos: pos,
-      newPos: newPos,
-      charAtNewPos: text[newPos],
-    }));
+    console.log('[IH motion] ' + JSON.stringify({ from: pos, to: newPos }));
 
     setCursor(el, newPos);
   };
@@ -290,10 +274,7 @@
     var linewise = command.motion === MotionType.LINE_UP || command.motion === MotionType.LINE_DOWN;
     var vLines = linewise ? getElementVisualLines(el) : null;
     var range = MR.resolveMotion(text, pos, command.motion, command.count, true, -1, command.char, vLines);
-    console.log('[IH-DEBUG _doOperatorMotion] ' + JSON.stringify({
-      operator: command.operator, motion: command.motion, pos: pos,
-      from: range.from, to: range.to, linewise: linewise,
-    }));
+    console.log('[IH opMotion] ' + JSON.stringify({ op: command.operator, m: command.motion, from: range.from, to: range.to }));
 
     if (linewise) {
       var startLine = TU.getLineInfo(text, range.from);
@@ -398,10 +379,7 @@
     var pos = el.selectionStart;
     var info = TU.getLineInfo(text, pos);
 
-    console.log('[IH-DEBUG _doInsertEnter] ' + JSON.stringify({
-      entry: command.entry, pos: pos,
-      lineStart: info.lineStart, lineEnd: info.lineEnd,
-    }));
+    console.log('[IH insert] ' + JSON.stringify({ entry: command.entry, pos: pos }));
 
     switch (command.entry) {
       case InsertEntry.I_LOWER:
@@ -416,10 +394,7 @@
           var vStartI = vLinesI[viI].start;
           var vTextI = text.substring(vStartI, vLinesI[viI].end);
           var mI = vTextI.match(/^\s*/);
-          console.log('[IH-DEBUG I_UPPER] ' + JSON.stringify({
-            pos: pos, viI: viI, vStart: vStartI, vEnd: vLinesI[viI].end,
-            target: vStartI + (mI ? mI[0].length : 0),
-          }));
+          console.log('[IH I] ' + JSON.stringify({ pos: pos, vStart: vStartI, vEnd: vLinesI[viI].end }));
           setCursor(el, vStartI + (mI ? mI[0].length : 0));
         } else {
           var firstNonBlank = info.lineText.match(/^\s*/);
@@ -433,10 +408,7 @@
           var viA = TU.findVisualLine(vLinesA, pos);
           var vEndA = vLinesA[viA].end;
           var targetA = vEndA < info.lineEnd ? vEndA - 1 : vEndA;
-          console.log('[IH-DEBUG A_UPPER] ' + JSON.stringify({
-            pos: pos, viA: viA, vStart: vLinesA[viA].start, vEnd: vEndA,
-            lineEnd: info.lineEnd, target: targetA,
-          }));
+          console.log('[IH A] ' + JSON.stringify({ pos: pos, vEnd: vEndA, lineEnd: info.lineEnd }));
           setCursor(el, targetA);
         } else {
           setCursor(el, info.lineEnd);
@@ -496,9 +468,7 @@
     if (vLines) {
       var vi = TU.findVisualLine(vLines, pos);
       var vl = vLines[vi];
-      console.log('[IH-DEBUG _doVisualLineEnter vLines] ' + JSON.stringify({
-        pos: pos, vi: vi, vStart: vl.start, vEnd: vl.end,
-      }));
+      console.log('[IH V-line] ' + JSON.stringify({ pos: pos, vStart: vl.start, vEnd: vl.end }));
       setSelection(el, vl.start, vl.end);
     } else {
       var info = TU.getLineInfo(el.value, pos);
@@ -593,19 +563,14 @@
         end = vLines[endVi].end;
         if (end < text.length) end++;
         else if (start > 0) start--;
-        console.log('[IH-DEBUG _doVisualOperator lineWise vLines] ' + JSON.stringify({
-          anchor: anchor, head: head, anchorVi: anchorVi, headVi: headVi,
-          from: start, to: end,
-        }));
+        console.log('[IH visOp vLines] ' + JSON.stringify({ from: start, to: end }));
       } else {
         var info = TU.getLineInfo(text, start);
         start = info.lineStart;
         var endInfo = TU.getLineInfo(text, Math.max(end - 1, start));
         end = endInfo.lineEnd;
         if (end < text.length) end++;
-        console.log('[IH-DEBUG _doVisualOperator lineWise real] ' + JSON.stringify({
-          from: start, to: end,
-        }));
+        console.log('[IH visOp real] ' + JSON.stringify({ from: start, to: end }));
       }
     }
 
@@ -739,10 +704,7 @@
   // ── Escape ──────────────────────────────────────────
 
   InputHandler.prototype._doEscape = function (el, command) {
-    console.log('[IH-DEBUG _doEscape] ' + JSON.stringify({
-      fromMode: command.fromMode, pos: el.selectionStart,
-      visualHead: command.visualHead,
-    }));
+    console.log('[IH esc] ' + JSON.stringify({ from: command.fromMode, pos: el.selectionStart }));
     if (command.fromMode === 'INSERT') {
       var pos = el.selectionStart;
       var vLines = getElementVisualLines(el);

@@ -211,14 +211,33 @@
 
     for (var i = 0; i < count; i++) {
       switch (motion) {
+        // FIX: h/l clamp to visual line boundaries when vLines available,
+        // just like they clamp to real line boundaries otherwise.
+        // WHY: In contenteditable, crossing visual line boundaries with h/l
+        // lands the cursor on \n separators or the wrong visual line after
+        // operations like A<esc>.
+        // WARNING: Removing the vLines branches lets h/l cross visual lines.
         case MotionType.CHAR_LEFT: {
-          var clInfo = TU.getLineInfo(text, newPos);
-          if (newPos > clInfo.lineStart) newPos--;
+          var clStart;
+          if (vLines) {
+            var clVi = TU.findVisualLine(vLines, newPos);
+            clStart = vLines[clVi].start;
+          } else {
+            clStart = TU.getLineInfo(text, newPos).lineStart;
+          }
+          if (newPos > clStart) newPos--;
           break;
         }
         case MotionType.CHAR_RIGHT: {
-          var crInfo = TU.getLineInfo(text, newPos);
-          var crMax = crInfo.lineEnd > crInfo.lineStart ? crInfo.lineEnd - 1 : crInfo.lineStart;
+          var crMax;
+          if (vLines) {
+            var crVi = TU.findVisualLine(vLines, newPos);
+            var crVl = vLines[crVi];
+            crMax = crVl.end > crVl.start ? crVl.end - 1 : crVl.start;
+          } else {
+            var crInfo = TU.getLineInfo(text, newPos);
+            crMax = crInfo.lineEnd > crInfo.lineStart ? crInfo.lineEnd - 1 : crInfo.lineStart;
+          }
           if (newPos < crMax) newPos++;
           break;
         }
