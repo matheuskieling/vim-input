@@ -25,7 +25,7 @@
 - **Complex input fields**: Some web applications use heavily customized input components that go beyond standard `<input>`, `<textarea>`, or `contenteditable` elements. The extension may not work correctly (or at all) in these cases.
 - **Unsupported input types**: Chrome restricts selection API access on `<input type="number">`, so the extension cannot operate on these fields.
 - **Line wrapping**: There is partial support for navigating visually wrapped lines (e.g., `j`/`k` moving within a wrapped line), but it does not work reliably in all cases.
-- **Chat-style editors**: Some chat inputs (e.g., ChatGPT) intercept the paragraph insertion triggered by `o` and `O` and interpret it as a "send message" action.
+- **Chat-style editors**: Some chat inputs (e.g., ChatGPT) intercept the paragraph insertion triggered by `o` and `O` and interpret it as a "send message" action. Use the scratch buffer (`:e`) as a workaround for reliable editing.
 - **No active maintenance**: This project was built for my own personal use and is shared as-is for anyone who might find it useful in their workflow. There are no plans for ongoing maintenance, feature requests, or bug fixes.
 
 ---
@@ -98,6 +98,7 @@ A small color-coded badge next to the input shows the current mode.
 | `v` | Enter Visual mode (toggle) |
 | `V` | Enter Visual Line mode (toggle) |
 | `:q` | Disable vim on the current input (reactivates on refocus) |
+| `:e` | Open scratch buffer (see below) |
 
 ### Motions
 
@@ -247,6 +248,26 @@ Smart indent applies to `Enter` in Insert mode and to `o` / `O` commands in Norm
 | `"`, `'`, `` ` `` | Auto-insert matching quote |
 | `)`, `]`, `}` | Skip over closing bracket if already present |
 
+### Scratch Buffer (`:e`)
+
+Some web editors (e.g., Reddit's Lexical editor) use custom frameworks that fight against direct text manipulation. Motions and simple edits work, but complex operations can behave unpredictably because these frameworks manage their own internal document model.
+
+The **scratch buffer** solves this by giving you a plain `<textarea>` overlay with full, reliable Vim support. Edit freely, then write the result back.
+
+| Command | Action |
+|---------|--------|
+| `:e` | Open scratch buffer pre-filled with the current input's text |
+| `:wq` or `:x` | Write changes back to the original input and close |
+| `:w` | Write changes back without closing |
+| `:q!` or `:q` | Discard changes and close |
+
+**When to use it:**
+- When you need to make large, multi-step edits on a complex web editor and want guaranteed Vim behavior
+- When motions or operators misbehave in a particular site's custom input
+- When you want a distraction-free editing surface
+
+The scratch buffer is completely isolated from the original input. Your edits only apply when you explicitly write back with `:wq` or `:w`. Discarding with `:q!` leaves the original input untouched.
+
 ### Visual Mode
 
 In Visual or Visual Line mode, motions extend the selection. Text objects set the selection. Then apply an operator:
@@ -338,6 +359,7 @@ On sites where Chrome's native UI swallows the Escape key (Google Search autocom
  │  Undo/Redo   u    Ctrl+R                                 │
  │                                                          │
  │  Mode        i a I A o O    v V    Escape    :q          │
+ │  Scratch     :e (open)   :wq (save+close)   :q! (discard)│
  └──────────────────────────────────────────────────────────┘
 
  INSERT MODE
@@ -386,6 +408,7 @@ content/
 ├── handlers/
 │   ├── input-handler.js            # Vim operations for <input> and <textarea>
 │   └── contenteditable-handler.js  # Vim operations for contenteditable elements
+├── scratch-buffer.js               # Isolated textarea overlay for :e/:wq editing
 ├── settings-manager.js             # Settings with chrome.storage.sync
 ├── element-detector.js             # Element type detection and handler routing
 ├── cursor-controller.js            # Block cursor positioning and scroll-into-view
