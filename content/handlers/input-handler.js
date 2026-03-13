@@ -235,7 +235,13 @@
     // WHY: h/l should not cross visual lines, matching the behavior of not
     // crossing real lines.
     // WARNING: Removing isHL here lets h/l cross visual line boundaries.
-    var vLines = (isVertical || isHL) ? getElementVisualLines(el) : null;
+    // FIX: Also compute vLines for $ and ^ so they respect visual lines.
+    // WHY: User wants $ and ^ to navigate within visual (soft-wrapped) lines.
+    // WARNING: Removing LINE_END/FIRST_NON_BLANK here makes them use real lines only.
+    var needsVLines = isVertical || isHL ||
+      command.motion === MotionType.LINE_END ||
+      command.motion === MotionType.FIRST_NON_BLANK;
+    var vLines = needsVLines ? getElementVisualLines(el) : null;
 
     console.log('[IH motion] ' + JSON.stringify({ m: command.motion, pos: pos }));
 
@@ -272,7 +278,10 @@
     var text = el.value;
     var pos = el.selectionStart;
     var linewise = command.motion === MotionType.LINE_UP || command.motion === MotionType.LINE_DOWN;
-    var vLines = linewise ? getElementVisualLines(el) : null;
+    var needsVLines = linewise ||
+      command.motion === MotionType.LINE_END ||
+      command.motion === MotionType.FIRST_NON_BLANK;
+    var vLines = needsVLines ? getElementVisualLines(el) : null;
     var range = MR.resolveMotion(text, pos, command.motion, command.count, true, -1, command.char, vLines);
     console.log('[IH opMotion] ' + JSON.stringify({ op: command.operator, m: command.motion, from: range.from, to: range.to }));
 
@@ -415,22 +424,68 @@
         }
         break;
       }
+      // FIX: Auto-indent and smart-indent for o command (gated by settings)
+      // WHY: New lines should preserve indentation and add extra indent after {
+      // WARNING: Removing this will lose auto-indent/smart-indent on o command
       case InsertEntry.O_LOWER: {
+        var Settings_oL = window.InputVim.Settings;
+        var tabSize_oL = Settings_oL.get('tabSize');
+        var indentMode_oL = Settings_oL.get('indentMode');
+        var autoIndent_oL = indentMode_oL === 'auto' || indentMode_oL === 'smart';
+        var smartIndent_oL = indentMode_oL === 'smart';
+        var trimmed_oL = info.lineText.trimEnd();
+        var smartO = smartIndent_oL && trimmed_oL.length > 0 && trimmed_oL[trimmed_oL.length - 1] === '{';
         var vLinesO = getElementVisualLines(el);
         if (vLinesO) {
           var viO = TU.findVisualLine(vLinesO, pos);
           var vEndO = vLinesO[viO].end;
-          var insertO = vEndO < info.lineEnd ? '\n\n' : '\n';
-          el.value = text.substring(0, vEndO) + insertO + text.substring(vEndO);
-          setCursor(el, vEndO + 1);
+          var midBlockO = vEndO < info.lineEnd;
+          var insertO = midBlockO ? '\n\n' : '\n';
+          var oIndent = '';
+          if (!midBlockO && autoIndent_oL) {
+            oIndent = TU.computeNewLineIndent(info.lineText, smartO, tabSize_oL);
+          }
+          el.value = text.substring(0, vEndO) + insertO + oIndent + text.substring(vEndO);
+          setCursor(el, vEndO + 1 + oIndent.length);
         } else {
-          el.value = text.substring(0, info.lineEnd) + '\n' + text.substring(info.lineEnd);
-          setCursor(el, info.lineEnd + 1);
+          var oIndent2 = autoIndent_oL ? TU.computeNewLineIndent(info.lineText, smartO, tabSize_oL) : '';
+          el.value = text.substring(0, info.lineEnd) + '\n' + oIndent2 + text.substring(info.lineEnd);
+          setCursor(el, info.lineEnd + 1 + oIndent2.length);
         }
         TU.fireInputEvent(el);
         break;
       }
+      // FIX: Auto-indent for O command, with smart-indent between braces (gated by settings)
+      // WHY: New lines should preserve indentation; O on } after { should smart-indent
+      // WARNING: Removing this will lose auto-indent on O command
       case InsertEntry.O_UPPER: {
+        var Settings_oU = window.InputVim.Settings;
+        var tabSize_oU = Settings_oU.get('tabSize');
+        var indentMode_oU = Settings_oU.get('indentMode');
+        var autoIndent_oU = indentMode_oU === 'auto' || indentMode_oU === 'smart';
+        var smartIndent_oU = indentMode_oU === 'smart';
+        var oUIndent = '';
+        if (autoIndent_oU) {
+          // Smart-indent for O: if current line starts with } and prev line ends with {
+          var oUSmartIndent = false;
+          var oUBaseText = info.lineText;
+          if (smartIndent_oU) {
+            var oUFirstChar = info.lineText.trimStart();
+            if (oUFirstChar.length > 0 && oUFirstChar[0] === '}') {
+              var lineNum_oU = TU.getLineNumber(text, pos);
+              if (lineNum_oU > 0) {
+                var prevStart_oU = TU.getLineStartOffset(text, lineNum_oU - 1);
+                var prevInfo_oU = TU.getLineInfo(text, prevStart_oU);
+                var prevTrimmed_oU = prevInfo_oU.lineText.trimEnd();
+                if (prevTrimmed_oU.length > 0 && prevTrimmed_oU[prevTrimmed_oU.length - 1] === '{') {
+                  oUSmartIndent = true;
+                  oUBaseText = prevInfo_oU.lineText;
+                }
+              }
+            }
+          }
+          oUIndent = TU.computeNewLineIndent(oUBaseText, oUSmartIndent, tabSize_oU);
+        }
         var vLinesU = getElementVisualLines(el);
         if (vLinesU) {
           var viU = TU.findVisualLine(vLinesU, pos);
@@ -439,12 +494,12 @@
             el.value = text.substring(0, vStartU) + '\n\n' + text.substring(vStartU);
             setCursor(el, vStartU + 1);
           } else {
-            el.value = text.substring(0, vStartU) + '\n' + text.substring(vStartU);
-            setCursor(el, vStartU);
+            el.value = text.substring(0, vStartU) + oUIndent + '\n' + text.substring(vStartU);
+            setCursor(el, vStartU + oUIndent.length);
           }
         } else {
-          el.value = text.substring(0, info.lineStart) + '\n' + text.substring(info.lineStart);
-          setCursor(el, info.lineStart);
+          el.value = text.substring(0, info.lineStart) + oUIndent + '\n' + text.substring(info.lineStart);
+          setCursor(el, info.lineStart + oUIndent.length);
         }
         TU.fireInputEvent(el);
         break;
@@ -483,7 +538,10 @@
     var text = el.value;
     var isLinewise = engine.mode === 'VISUAL_LINE';
     var isVertical = command.motion === MotionType.LINE_UP || command.motion === MotionType.LINE_DOWN;
-    var vLines = (isVertical || isLinewise) ? getElementVisualLines(el) : null;
+    var needsVLines = isVertical || isLinewise ||
+      command.motion === MotionType.LINE_END ||
+      command.motion === MotionType.FIRST_NON_BLANK;
+    var vLines = needsVLines ? getElementVisualLines(el) : null;
 
     if (isVertical) {
       if (this._desiredCol < 0) {

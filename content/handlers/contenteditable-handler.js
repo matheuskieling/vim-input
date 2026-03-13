@@ -488,7 +488,13 @@
     // is a no-op for those editors.
     // WARNING: Removing this breaks h/l/a at block boundaries in Outlook.
     var isEscapeFromInsert = command.type === CommandType.ESCAPE && command.fromMode === 'INSERT';
-    if (!isEscapeFromInsert && pos > 0 && text[pos] === '\n') {
+    // FIX: Added text[pos - 1] !== '\n' guard to preserve empty-line identity.
+    // WHY: On empty blocks (e.g. <p><br></p> between brackets), both text[pos]
+    // and text[pos-1] are '\n'. Adjusting pos-1 lands on the previous block's
+    // separator, causing findVisualLine to return the wrong line. This broke
+    // j/k navigation (bouncing) and Vd (deleting wrong line) on empty lines.
+    // WARNING: Removing the text[pos-1]!=='\n' check re-breaks empty-line nav.
+    if (!isEscapeFromInsert && pos > 0 && text[pos] === '\n' && text[pos - 1] !== '\n') {
       pos = pos - 1;
     }
 
@@ -565,7 +571,12 @@
     // WHY: h/l crossing visual lines causes cursor to land on \n separators
     // or render on wrong visual line in contenteditable.
     // WARNING: Removing isHL here lets h/l cross visual line boundaries.
-    if (isVertical || isHL) {
+    // FIX: Also compute vLines for $ and ^ so they respect visual lines.
+    // WHY: User wants $ and ^ to navigate within visual (soft-wrapped) lines.
+    // WARNING: Removing LINE_END/FIRST_NON_BLANK here makes them use real lines only.
+    if (isVertical || isHL ||
+        command.motion === MotionType.LINE_END ||
+        command.motion === MotionType.FIRST_NON_BLANK) {
       vLines = computeCEVisualLines(el, text);
     }
 
@@ -593,7 +604,10 @@
 
   ContentEditableHandler.prototype._doOperatorMotion = function (el, text, pos, command) {
     var linewise = command.motion === MotionType.LINE_UP || command.motion === MotionType.LINE_DOWN;
-    var vLines = linewise ? computeCEVisualLines(el, text) : null;
+    var needsVLines = linewise ||
+      command.motion === MotionType.LINE_END ||
+      command.motion === MotionType.FIRST_NON_BLANK;
+    var vLines = needsVLines ? computeCEVisualLines(el, text) : null;
     var range = MR.resolveMotion(text, pos, command.motion, command.count, true, -1, command.char, vLines);
 
     if (linewise) {
@@ -736,28 +750,71 @@
         }
         break;
       }
+      // FIX: Auto-indent and smart-indent for o command (gated by settings)
+      // WHY: New lines should preserve indentation and add extra indent after {
+      // WARNING: Removing this will lose auto-indent/smart-indent on o command
       case InsertEntry.O_LOWER: {
+        var Settings_oLC = window.InputVim.Settings;
+        var tabSize_oLC = Settings_oLC.get('tabSize');
+        var indentMode_oLC = Settings_oLC.get('indentMode');
+        var autoIndent_oLC = indentMode_oLC === 'auto' || indentMode_oLC === 'smart';
+        var smartIndent_oLC = indentMode_oLC === 'smart';
+        var trimmed_oLC = info.lineText.trimEnd();
+        var smartOC = smartIndent_oLC && trimmed_oLC.length > 0 && trimmed_oLC[trimmed_oLC.length - 1] === '{';
         var vLinesO = computeCEVisualLines(el, text);
         var viO = TU.findVisualLine(vLinesO, pos);
         var vEnd = vLinesO[viO].end;
         var midBlockO = vEnd < info.lineEnd;
+        var oIndentC = '';
+        if (!midBlockO && autoIndent_oLC) {
+          oIndentC = TU.computeNewLineIndent(info.lineText, smartOC, tabSize_oLC);
+        }
         setCursorAt(el, vEnd);
         document.dispatchEvent(new Event('selectionchange'));
         console.log('[CE o] ' + JSON.stringify({ vEnd: vEnd, midBlock: midBlockO }));
         _execCmd('insertParagraph');
         if (midBlockO) {
-          // Mid-block split: first insertParagraph split the block,
-          // second creates the empty line between the two halves.
           _execCmd('insertParagraph');
           var emptyPosO = vEnd + 1;
           setTimeout(function () {
             setCursorAt(el, emptyPosO);
           }, 0);
+        } else if (oIndentC) {
+          _execCmd('insertText', oIndentC);
         }
         TU.fireInputEvent(el);
         break;
       }
+      // FIX: Auto-indent for O command, with smart-indent between braces (gated by settings)
+      // WHY: New lines should preserve indentation; O on } after { should smart-indent
+      // WARNING: Removing this will lose auto-indent on O command
       case InsertEntry.O_UPPER: {
+        var Settings_oUC = window.InputVim.Settings;
+        var tabSize_oUC = Settings_oUC.get('tabSize');
+        var indentMode_oUC = Settings_oUC.get('indentMode');
+        var autoIndent_oUC = indentMode_oUC === 'auto' || indentMode_oUC === 'smart';
+        var smartIndent_oUC = indentMode_oUC === 'smart';
+        var oUIndentC = '';
+        if (autoIndent_oUC) {
+          var oUSmartIndentC = false;
+          var oUBaseTextC = info.lineText;
+          if (smartIndent_oUC) {
+            var oUFirstCharC = info.lineText.trimStart();
+            if (oUFirstCharC.length > 0 && oUFirstCharC[0] === '}') {
+              var lineNum_oUC = TU.getLineNumber(text, pos);
+              if (lineNum_oUC > 0) {
+                var prevStart_oUC = TU.getLineStartOffset(text, lineNum_oUC - 1);
+                var prevInfo_oUC = TU.getLineInfo(text, prevStart_oUC);
+                var prevTrimmed_oUC = prevInfo_oUC.lineText.trimEnd();
+                if (prevTrimmed_oUC.length > 0 && prevTrimmed_oUC[prevTrimmed_oUC.length - 1] === '{') {
+                  oUSmartIndentC = true;
+                  oUBaseTextC = prevInfo_oUC.lineText;
+                }
+              }
+            }
+          }
+          oUIndentC = TU.computeNewLineIndent(oUBaseTextC, oUSmartIndentC, tabSize_oUC);
+        }
         var vLinesU = computeCEVisualLines(el, text);
         var viU = TU.findVisualLine(vLinesU, pos);
         var vStart = vLinesU[viU].start;
@@ -777,6 +834,7 @@
         var targetPosU = midBlockU ? vStart + 1 : vStart;
         setTimeout(function () {
           setCursorAt(el, targetPosU);
+          if (!midBlockU && oUIndentC) _execCmd('insertText', oUIndentC);
         }, 0);
         break;
       }
@@ -836,7 +894,9 @@
     var isLinewise = engine.mode === 'VISUAL_LINE';
     var vLines = null;
 
-    if (isVertical || isLinewise) {
+    if (isVertical || isLinewise ||
+        command.motion === MotionType.LINE_END ||
+        command.motion === MotionType.FIRST_NON_BLANK) {
       vLines = computeCEVisualLines(el, text);
     }
 

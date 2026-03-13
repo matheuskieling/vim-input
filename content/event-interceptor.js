@@ -76,6 +76,109 @@
     }
   }
 
+  // ── Enter / auto-indent helper ─────────────────────
+
+  function insertNewlineWithIndent(el) {
+    var Settings = window.InputVim.Settings;
+    var ED = window.InputVim.ElementDetector;
+    var TU = window.InputVim.TextUtils;
+    var tabSize = Settings.get('tabSize');
+    var indentMode = Settings.get('indentMode');
+    var autoIndent = indentMode === 'auto' || indentMode === 'smart';
+    var smartIndent = indentMode === 'smart';
+
+    if (ED.isTextInput(el)) {
+      var pos = el.selectionStart;
+      var val = el.value;
+
+      if (!autoIndent) {
+        var plain = '\n';
+        el.value = val.substring(0, pos) + plain + val.substring(el.selectionEnd);
+        el.selectionStart = el.selectionEnd = pos + 1;
+        el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+        return;
+      }
+
+      var lineInfo = TU.getLineInfo(val, pos);
+      var charBefore = pos > 0 ? val[pos - 1] : '';
+      var charAfter = pos < val.length ? val[pos] : '';
+
+      // FIX: Split braces — Enter between {} creates indented middle line + } on its own line
+      // WHY: Typing inside {} should produce the standard block structure
+      // WARNING: Removing this makes Enter between {} push } onto the indented line
+      if (smartIndent && charBefore === '{' && charAfter === '}') {
+        var baseIndent = TU.computeNewLineIndent(lineInfo.lineText, false, tabSize);
+        var smartInd = TU.computeNewLineIndent(lineInfo.lineText, true, tabSize);
+        var splitInsert = '\n' + smartInd + '\n' + baseIndent;
+        el.value = val.substring(0, pos) + splitInsert + val.substring(pos);
+        el.selectionStart = el.selectionEnd = pos + 1 + smartInd.length;
+        el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+        return;
+      }
+
+      var doSmart = smartIndent && charBefore === '{';
+      var indent = TU.computeNewLineIndent(lineInfo.lineText, doSmart, tabSize);
+      var insert = '\n' + indent;
+      el.value = val.substring(0, pos) + insert + val.substring(el.selectionEnd);
+      el.selectionStart = el.selectionEnd = pos + insert.length;
+      el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+    } else if (ED.isContentEditable(el)) {
+      if (!autoIndent) {
+        document.execCommand('insertParagraph');
+        return;
+      }
+
+      // Determine indentation from current block context
+      var sel = window.getSelection();
+      if (!sel.rangeCount) return;
+      var range = sel.getRangeAt(0);
+      var startNode = range.startContainer;
+      var startOff = range.startOffset;
+
+      // Find the nearest block ancestor to extract indentation
+      var blockNode = startNode;
+      if (blockNode.nodeType === 3) blockNode = blockNode.parentNode;
+      while (blockNode && blockNode !== el &&
+             !(/^(P|DIV|LI|H[1-6]|PRE|BLOCKQUOTE)$/.test(blockNode.tagName))) {
+        blockNode = blockNode.parentNode;
+      }
+
+      var blockText = (blockNode && blockNode !== el) ? blockNode.textContent : '';
+      var charBeforeCE = '';
+      if (startNode.nodeType === 3 && startOff > 0) {
+        charBeforeCE = startNode.textContent[startOff - 1];
+      }
+      var charAfterCE = '';
+      if (startNode.nodeType === 3 && startOff < startNode.textContent.length) {
+        charAfterCE = startNode.textContent[startOff];
+      }
+
+      // FIX: Split braces — Enter between {} in contenteditable
+      // WHY: Same split-braces behavior as textarea
+      // WARNING: Removing this makes Enter between {} push } onto the indented line
+      if (smartIndent && charBeforeCE === '{' && charAfterCE === '}') {
+        var baseIndentCE = TU.computeNewLineIndent(blockText, false, tabSize);
+        var smartIndCE = TU.computeNewLineIndent(blockText, true, tabSize);
+        sel.modify('extend', 'forward', 'character');
+        document.execCommand('delete');
+        document.execCommand('insertParagraph');
+        if (smartIndCE) document.execCommand('insertText', false, smartIndCE);
+        document.execCommand('insertParagraph');
+        document.execCommand('insertText', false, baseIndentCE + '}');
+        var sCE = window.getSelection();
+        sCE.modify('move', 'backward', 'line');
+        sCE.modify('move', 'forward', 'lineboundary');
+        return;
+      }
+
+      var doSmartCE = smartIndent && charBeforeCE === '{';
+      var indentCE = TU.computeNewLineIndent(blockText, doSmartCE, tabSize);
+
+      document.execCommand('insertParagraph');
+      if (indentCE) document.execCommand('insertText', false, indentCE);
+    }
+  }
+
   // ── Bracket matching helpers ────────────────────────
 
   function insertBracketPair(el, open, close) {
@@ -286,12 +389,21 @@
 
     if (key === 'Shift' || key === 'Control' || key === 'Alt' || key === 'Meta') return;
 
-    // Insert mode: only intercept Escape, Tab, and bracket matching
+    // Insert mode: only intercept Escape, Tab, Enter, and bracket matching
     if (_engine.mode === Mode.INSERT) {
       if (key === 'Tab') {
         _blocked = true;
         killEvent(e);
         insertTab(el);
+        return;
+      }
+      // FIX: Always intercept Enter in insert mode; indent behavior is gated by settings
+      // WHY: Prevents native Enter from firing (e.g. form submit, Slack send) while in insert mode
+      // WARNING: Removing this lets the browser handle Enter natively in insert mode
+      if (key === 'Enter') {
+        _blocked = true;
+        killEvent(e);
+        insertNewlineWithIndent(el);
         return;
       }
       if (Settings.get('matchBrackets') && BRACKET_PAIRS[key]) {
@@ -342,10 +454,10 @@
       return;
     }
 
-    // FIX: Let Tab / Shift+Tab pass through in non-insert modes
-    // WHY: User expects native browser focus cycling (tab between inputs) outside insert mode
-    // WARNING: Removing this will cause Tab to be swallowed in normal/visual modes instead of moving focus
-    if (key === 'Tab') {
+    // FIX: Let Tab / Shift+Tab and Enter pass through in non-insert modes
+    // WHY: User expects native browser behavior (tab between inputs, Enter to submit/send) outside insert mode
+    // WARNING: Removing this will cause Tab/Enter to be swallowed in normal/visual modes
+    if (key === 'Tab' || key === 'Enter') {
       _markFocusSteal();
       return;
     }

@@ -306,15 +306,32 @@
           newPos = TU.wordEndBackBig(text, newPos); break;
         case MotionType.LINE_START:
           newPos = TU.getLineInfo(text, newPos).lineStart; break;
+        // FIX: $ and ^ respect visual lines when vLines are available
+        // WHY: User wants $ and ^ to navigate within visual (soft-wrapped) lines
+        // WARNING: Removing vLines branches makes $ and ^ use real lines only
         case MotionType.LINE_END: {
-          var leInfo = TU.getLineInfo(text, newPos);
-          newPos = forOperator ? leInfo.lineEnd : Math.max(leInfo.lineStart, leInfo.lineEnd - 1);
+          if (vLines) {
+            var leVi = TU.findVisualLine(vLines, newPos);
+            var leVl = vLines[leVi];
+            newPos = forOperator ? leVl.end : Math.max(leVl.start, leVl.end - 1);
+          } else {
+            var leInfo = TU.getLineInfo(text, newPos);
+            newPos = forOperator ? leInfo.lineEnd : Math.max(leInfo.lineStart, leInfo.lineEnd - 1);
+          }
           break;
         }
         case MotionType.FIRST_NON_BLANK: {
-          var info3 = TU.getLineInfo(text, newPos);
-          var m = info3.lineText.match(/^\s*/);
-          newPos = info3.lineStart + (m ? m[0].length : 0);
+          if (vLines) {
+            var fnbVi = TU.findVisualLine(vLines, newPos);
+            var fnbVl = vLines[fnbVi];
+            var fnbText = text.substring(fnbVl.start, fnbVl.end);
+            var fnbM = fnbText.match(/^\s*/);
+            newPos = fnbVl.start + (fnbM ? fnbM[0].length : 0);
+          } else {
+            var info3 = TU.getLineInfo(text, newPos);
+            var m = info3.lineText.match(/^\s*/);
+            newPos = info3.lineStart + (m ? m[0].length : 0);
+          }
           break;
         }
         case MotionType.FIND_CHAR: {

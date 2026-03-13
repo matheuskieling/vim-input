@@ -166,6 +166,17 @@
     return vLines.length - 1;
   }
 
+  // ── Indent helper ─────────────────────────────────────
+
+  function computeNewLineIndent(lineText, addExtraIndent, tabSize) {
+    var match = lineText.match(/^(\s*)/);
+    var indent = match ? match[1] : '';
+    if (addExtraIndent) {
+      for (var i = 0; i < tabSize; i++) indent += ' ';
+    }
+    return indent;
+  }
+
   // ── Event helper ──────────────────────────────────────
 
   function fireInputEvent(el) {
@@ -194,6 +205,7 @@
     findCharForward: findCharForward,
     findCharBackward: findCharBackward,
     findVisualLine: findVisualLine,
+    computeNewLineIndent: computeNewLineIndent,
     fireInputEvent: fireInputEvent,
   };
 })();

@@ -6,14 +6,15 @@
 
   var DEFAULTS = {
     enabled: true,
-    startMode: 'INSERT',
+    startMode: 'NORMAL',
     excludePatterns: [],
     matchBrackets: false,
     tabSize: 4,
-    useClipboard: false,
-    highlightYank: false,
+    indentMode: 'smart',
+    useClipboard: true,
+    highlightYank: true,
     halfPageJump: 20,
-    alwaysCentered: false,
+    alwaysCentered: true,
   };
 
   var _cache = {};

@@ -5,6 +5,7 @@
   var startModeSelect = document.getElementById('start-mode');
   var matchBracketsToggle = document.getElementById('match-brackets');
   var tabSizeSelect = document.getElementById('tab-size');
+  var indentModeSelect = document.getElementById('indent-mode');
   var useClipboardToggle = document.getElementById('use-clipboard');
   var highlightYankToggle = document.getElementById('highlight-yank');
   var halfPageJumpInput = document.getElementById('half-page-jump');
@@ -48,12 +49,13 @@
   // ── Load settings ───────────────────────────────────
 
   chrome.storage.sync.get(
-    { enabled: true, startMode: 'INSERT', excludePatterns: [], matchBrackets: false, tabSize: 4, useClipboard: false, highlightYank: false, halfPageJump: 20, alwaysCentered: false },
+    { enabled: true, startMode: 'NORMAL', excludePatterns: [], matchBrackets: false, tabSize: 4, indentMode: 'smart', useClipboard: true, highlightYank: true, halfPageJump: 20, alwaysCentered: true },
     function (items) {
       enabledToggle.checked = items.enabled;
       startModeSelect.value = items.startMode || 'INSERT';
       matchBracketsToggle.checked = items.matchBrackets || false;
       tabSizeSelect.value = String(items.tabSize || 4);
+      indentModeSelect.value = items.indentMode || 'smart';
       useClipboardToggle.checked = items.useClipboard || false;
       highlightYankToggle.checked = items.highlightYank || false;
       halfPageJumpInput.value = String(items.halfPageJump || 20);
@@ -70,6 +72,7 @@
   startModeSelect.addEventListener('change', saveSettings);
   matchBracketsToggle.addEventListener('change', saveSettings);
   tabSizeSelect.addEventListener('change', saveSettings);
+  indentModeSelect.addEventListener('change', saveSettings);
   useClipboardToggle.addEventListener('change', saveSettings);
   highlightYankToggle.addEventListener('change', saveSettings);
   halfPageJumpInput.addEventListener('change', saveSettings);
@@ -175,6 +178,7 @@
       startMode: startModeSelect.value,
       matchBrackets: matchBracketsToggle.checked,
       tabSize: parseInt(tabSizeSelect.value, 10) || 4,
+      indentMode: indentModeSelect.value,
       useClipboard: useClipboardToggle.checked,
       highlightYank: highlightYankToggle.checked,
       halfPageJump: parseInt(halfPageJumpInput.value, 10) || 20,
