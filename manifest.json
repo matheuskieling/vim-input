@@ -22,7 +22,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content/page-escape-blocker.js"],
+      "js": ["content/page-escape-blocker.js", "content/page-bridge.js"],
       "run_at": "document_start",
       "all_frames": true,
       "world": "MAIN"

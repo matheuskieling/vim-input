@@ -84,9 +84,13 @@ Format:
 Before making ANY change to code that has a `// FIX:` or `// WARNING:` comment, you MUST:
 1. **Read** the existing fix comment in full
 2. **Tell the user** explicitly: what the previous fix was, why it was put there, and what risks come from changing it
-3. **Ask for confirmation** before proceeding if there is any chance the new change could regress the old fix
+3. **ASK THE USER FOR EXPLICIT CONFIRMATION before proceeding** — even if the change seems safe. You MUST prompt with something like: *"This code has a FIX comment: [quote it]. Changing it could [risk]. Do you want me to proceed?"* — and WAIT for the user's answer. Do NOT proceed without a "yes".
 4. **Preserve or update** the fix comment — never silently delete it. If the fix is no longer needed, explain why to the user and get confirmation before removing the comment.
+
+### ⛔ NEVER delete a FIX/WARNING comment without prompting:
+
+**You MUST prompt the user before deleting, moving, or replacing ANY `// FIX:` or `// WARNING:` comment.** These comments represent deliberate decisions the user made. Deleting one without asking is treated as destructive — equivalent to deleting code. Even if you are rewriting the surrounding code, the comment must be preserved in the correct location or the user must explicitly approve its removal. This is NON-NEGOTIABLE.
 
 ### Why this matters:
 
-Fixes in this codebase often address subtle browser-specific bugs, focus-steal edge cases, and contenteditable quirks that are extremely hard to reproduce and debug. Silently overwriting a fix causes regressions that waste hours of the user's time. The comments are the project's institutional memory — treat them as load-bearing.
+Fixes in this codebase often address subtle browser-specific bugs, focus-steal edge cases, and contenteditable quirks that are extremely hard to reproduce and debug. Silently overwriting a fix causes regressions that waste hours of the user's time. The comments are the project's institutional memory — treat them as load-bearing. Every time a comment is silently removed, context is permanently lost and the same bug WILL resurface.

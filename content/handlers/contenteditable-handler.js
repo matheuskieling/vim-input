@@ -312,9 +312,34 @@
     }
   }
 
+  // ── Framework editor detection & bridge ────────────────
+  // CKEditor 5 (Teams, etc.) ignores execCommand entirely.
+  // For these editors, we dispatch a custom event that page-bridge.js
+  // (MAIN world) handles via the editor's JavaScript API.
+
+  function _isFrameworkEditor(el) {
+    return !!(el.classList && el.classList.contains('ck-editor__editable'));
+  }
+
+  function _bridgeExec(el, action, data) {
+    var cmd = { action: action };
+    if (data) { for (var k in data) { if (data.hasOwnProperty(k)) cmd[k] = data[k]; } }
+    el.setAttribute('data-input-vim-bridge-cmd', JSON.stringify(cmd));
+    el.removeAttribute('data-input-vim-bridge-result');
+    el.dispatchEvent(new Event('input-vim-bridge', { bubbles: true }));
+    var result = el.getAttribute('data-input-vim-bridge-result');
+    el.removeAttribute('data-input-vim-bridge-cmd');
+    el.removeAttribute('data-input-vim-bridge-result');
+    return result === 'ok';
+  }
+
+  // ── Mutation functions ────────────────────────────────
+
   function deleteRange(el, from, to) {
     setSelectionRange(el, from, to);
-    if (!_execCmd('delete')) {
+    if (_isFrameworkEditor(el)) {
+      _bridgeExec(el, 'deleteSelection');
+    } else if (!_execCmd('delete')) {
       var text = getFlatText(el);
       el.textContent = text.substring(0, from) + text.substring(to);
     }
@@ -322,7 +347,9 @@
 
   function insertTextAt(el, offset, str) {
     setCursorAt(el, offset);
-    if (!_execCmd('insertText', str)) {
+    if (_isFrameworkEditor(el)) {
+      _bridgeExec(el, 'insertText', { text: str });
+    } else if (!_execCmd('insertText', str)) {
       var text = getFlatText(el);
       el.textContent = text.substring(0, offset) + str + text.substring(offset);
     }
@@ -331,9 +358,13 @@
 
   function insertParagraphAt(el, offset) {
     setCursorAt(el, offset);
-    // No fallback: execCommand returns false when editors like ProseMirror
-    // prevent default on beforeinput, but they handle it internally.
-    _execCmd('insertParagraph');
+    if (_isFrameworkEditor(el)) {
+      _bridgeExec(el, 'insertParagraph');
+    } else {
+      // No fallback: execCommand returns false when editors like ProseMirror
+      // prevent default on beforeinput, but they handle it internally.
+      _execCmd('insertParagraph');
+    }
   }
 
   // ── Visual line helpers for contenteditable ────────────
@@ -468,6 +499,10 @@
   };
 
   ContentEditableHandler.prototype._saveUndo = function (el) {
+    // FIX: Skip our undo stack for framework editors — they track their own undo history
+    // WHY: Saving innerHTML snapshots would be out of sync with CKEditor's model
+    // WARNING: Removing this skip causes stale undo state in framework editors
+    if (_isFrameworkEditor(el)) return;
     this._getUndo(el).push(el);
   };
 
@@ -772,15 +807,16 @@
         setCursorAt(el, vEnd);
         document.dispatchEvent(new Event('selectionchange'));
         console.log('[CE o] ' + JSON.stringify({ vEnd: vEnd, midBlock: midBlockO }));
-        _execCmd('insertParagraph');
+        var _fwO = _isFrameworkEditor(el);
+        _fwO ? _bridgeExec(el, 'insertParagraph') : _execCmd('insertParagraph');
         if (midBlockO) {
-          _execCmd('insertParagraph');
+          _fwO ? _bridgeExec(el, 'insertParagraph') : _execCmd('insertParagraph');
           var emptyPosO = vEnd + 1;
           setTimeout(function () {
             setCursorAt(el, emptyPosO);
           }, 0);
         } else if (oIndentC) {
-          _execCmd('insertText', oIndentC);
+          _fwO ? _bridgeExec(el, 'insertText', { text: oIndentC }) : _execCmd('insertText', oIndentC);
         }
         TU.fireInputEvent(el);
         break;
@@ -822,11 +858,12 @@
         setCursorAt(el, vStart);
         document.dispatchEvent(new Event('selectionchange'));
         console.log('[CE O] ' + JSON.stringify({ vStart: vStart, midBlock: midBlockU }));
-        _execCmd('insertParagraph');
+        var _fwU = _isFrameworkEditor(el);
+        _fwU ? _bridgeExec(el, 'insertParagraph') : _execCmd('insertParagraph');
         if (midBlockU) {
           // Mid-block split: first insertParagraph split the block,
           // second creates the empty line between the two halves.
-          _execCmd('insertParagraph');
+          _fwU ? _bridgeExec(el, 'insertParagraph') : _execCmd('insertParagraph');
         }
         TU.fireInputEvent(el);
         // Cursor lands on the wrong block after insertParagraph.
@@ -834,7 +871,9 @@
         var targetPosU = midBlockU ? vStart + 1 : vStart;
         setTimeout(function () {
           setCursorAt(el, targetPosU);
-          if (!midBlockU && oUIndentC) _execCmd('insertText', oUIndentC);
+          if (!midBlockU && oUIndentC) {
+            _fwU ? _bridgeExec(el, 'insertText', { text: oUIndentC }) : _execCmd('insertText', oUIndentC);
+          }
         }, 0);
         break;
       }
@@ -994,7 +1033,9 @@
     this._saveUndo(el);
     Register.set(selected, 'char');
 
-    if (!_execCmd('delete')) {
+    if (_isFrameworkEditor(el)) {
+      _bridgeExec(el, 'deleteSelection');
+    } else if (!_execCmd('delete')) {
       var range = sel.getRangeAt(0);
       range.deleteContents();
     }
@@ -1032,6 +1073,13 @@
   };
 
   ContentEditableHandler.prototype._doUndo = function (el, count) {
+    // FIX: Delegate to framework editor's native undo
+    // WHY: Setting innerHTML clobbers CKEditor's internal model
+    // WARNING: Removing this breaks undo in framework editors
+    if (_isFrameworkEditor(el)) {
+      _bridgeExec(el, 'undo', { count: count });
+      return;
+    }
     var undo = this._getUndo(el);
     for (var i = 0; i < count; i++) {
       var state = undo.pop();
@@ -1047,6 +1095,13 @@
   };
 
   ContentEditableHandler.prototype._doRedo = function (el, count) {
+    // FIX: Delegate to framework editor's native redo
+    // WHY: Setting innerHTML clobbers CKEditor's internal model
+    // WARNING: Removing this breaks redo in framework editors
+    if (_isFrameworkEditor(el)) {
+      _bridgeExec(el, 'redo', { count: count });
+      return;
+    }
     var undo = this._getUndo(el);
     for (var i = 0; i < count; i++) {
       var state = undo.popRedo();
@@ -1068,7 +1123,9 @@
     var replacement = '';
     for (var i = 0; i < count; i++) replacement += command.char;
     setSelectionRange(el, pos, pos + count);
-    if (!_execCmd('insertText', replacement)) {
+    if (_isFrameworkEditor(el)) {
+      _bridgeExec(el, 'insertText', { text: replacement });
+    } else if (!_execCmd('insertText', replacement)) {
       el.textContent = text.substring(0, pos) + replacement + text.substring(pos + count);
     }
     setCursorAt(el, pos + count - 1);
@@ -1431,4 +1488,6 @@
 
   window.InputVim = window.InputVim || {};
   window.InputVim.ContentEditableHandler = ContentEditableHandler;
+  window.InputVim.bridgeExec = _bridgeExec;
+  window.InputVim.isFrameworkEditor = _isFrameworkEditor;
 })();

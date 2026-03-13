@@ -72,7 +72,19 @@
       el.selectionStart = el.selectionEnd = pos + tabSize;
       el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
     } else if (ED.isContentEditable(el)) {
-      document.execCommand('insertText', false, spaces);
+      // FIX: Framework editors must bypass execCommand for text insertion
+      // WHY: execCommand('insertText') fires beforeinput that CKEditor may mishandle for whitespace
+      // WARNING: Removing the framework branch breaks Tab in Teams/CKEditor editors
+      var _isFwTab = window.InputVim.isFrameworkEditor && window.InputVim.isFrameworkEditor(el);
+      if (_isFwTab && window.InputVim.bridgeExec) {
+        window.InputVim.bridgeExec(el, 'insertText', { text: spaces });
+      } else {
+        var tabBefore = el.innerHTML;
+        document.execCommand('insertText', false, spaces);
+        if (el.innerHTML === tabBefore && window.InputVim.bridgeExec) {
+          window.InputVim.bridgeExec(el, 'insertText', { text: spaces });
+        }
+      }
     }
   }
 
@@ -123,6 +135,70 @@
       el.selectionStart = el.selectionEnd = pos + insert.length;
       el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
     } else if (ED.isContentEditable(el)) {
+      // FIX: Framework editors (CKEditor 5 in Teams, etc.) must use the bridge
+      //   instead of execCommand, because execCommand('insertParagraph') fires a
+      //   beforeinput event that CKEditor maps to its enter command — which Teams
+      //   overrides to send messages instead of inserting a new line.
+      // WHY: execCommand is NOT a no-op in CKEditor; it triggers Teams' send behavior
+      // WARNING: Removing the framework branch will break Enter in Teams/CKEditor editors
+      var _isFwEnter = window.InputVim.isFrameworkEditor && window.InputVim.isFrameworkEditor(el);
+      var _bridgeEnter = _isFwEnter ? window.InputVim.bridgeExec : null;
+
+      if (_isFwEnter && _bridgeEnter) {
+        // Framework editor path: use bridge for all mutations
+        if (!autoIndent) {
+          _bridgeEnter(el, 'insertParagraph');
+          return;
+        }
+
+        var selFw = window.getSelection();
+        if (!selFw.rangeCount) return;
+        var rangeFw = selFw.getRangeAt(0);
+        var startNodeFw = rangeFw.startContainer;
+        var startOffFw = rangeFw.startOffset;
+
+        var blockNodeFw = startNodeFw;
+        if (blockNodeFw.nodeType === 3) blockNodeFw = blockNodeFw.parentNode;
+        while (blockNodeFw && blockNodeFw !== el &&
+               !(/^(P|DIV|LI|H[1-6]|PRE|BLOCKQUOTE)$/.test(blockNodeFw.tagName))) {
+          blockNodeFw = blockNodeFw.parentNode;
+        }
+
+        var blockTextFw = (blockNodeFw && blockNodeFw !== el) ? blockNodeFw.textContent : '';
+        var charBeforeFw = '';
+        if (startNodeFw.nodeType === 3 && startOffFw > 0) {
+          charBeforeFw = startNodeFw.textContent[startOffFw - 1];
+        }
+        var charAfterFw = '';
+        if (startNodeFw.nodeType === 3 && startOffFw < startNodeFw.textContent.length) {
+          charAfterFw = startNodeFw.textContent[startOffFw];
+        }
+
+        // Split braces in framework editors
+        if (smartIndent && charBeforeFw === '{' && charAfterFw === '}') {
+          var baseIndFw = TU.computeNewLineIndent(blockTextFw, false, tabSize);
+          var smartIndFw = TU.computeNewLineIndent(blockTextFw, true, tabSize);
+          _bridgeEnter(el, 'deleteForward', { count: 1 });
+          _bridgeEnter(el, 'insertParagraph');
+          if (smartIndFw) _bridgeEnter(el, 'insertText', { text: smartIndFw });
+          _bridgeEnter(el, 'insertParagraph');
+          _bridgeEnter(el, 'insertText', { text: baseIndFw + '}' });
+          // Move cursor back to the indented middle line
+          var selBack = window.getSelection();
+          selBack.modify('move', 'backward', 'line');
+          selBack.modify('move', 'forward', 'lineboundary');
+          return;
+        }
+
+        var doSmartFw = smartIndent && charBeforeFw === '{';
+        var indentFw = TU.computeNewLineIndent(blockTextFw, doSmartFw, tabSize);
+
+        _bridgeEnter(el, 'insertParagraph');
+        if (indentFw) _bridgeEnter(el, 'insertText', { text: indentFw });
+        return;
+      }
+
+      // Non-framework contenteditable path (unchanged)
       if (!autoIndent) {
         document.execCommand('insertParagraph');
         return;
@@ -225,6 +301,90 @@
       }
     }
     return false;
+  }
+
+  // ── Framework editor fallback helpers ────────────────
+  // Used ONLY when document.execCommand is a no-op (e.g., CKEditor 5 in Teams).
+  // Tries the page-bridge (MAIN world CKEditor API) first, then synthetic
+  // beforeinput events, then direct DOM manipulation as a last resort.
+
+  function _tryInsertParagraphFallback(el) {
+    // Strategy 0: page-bridge → CKEditor API (most reliable)
+    var bridge = window.InputVim.bridgeExec;
+    if (bridge && bridge(el, 'insertParagraph')) return true;
+
+    var before = el.innerHTML;
+
+    // Strategy 1: synthetic beforeinput — insertParagraph
+    el.dispatchEvent(new InputEvent('beforeinput', {
+      inputType: 'insertParagraph',
+      bubbles: true,
+      cancelable: true,
+      composed: true
+    }));
+    if (el.innerHTML !== before) return true;
+
+    // Strategy 2: synthetic beforeinput — insertLineBreak
+    el.dispatchEvent(new InputEvent('beforeinput', {
+      inputType: 'insertLineBreak',
+      bubbles: true,
+      cancelable: true,
+      composed: true
+    }));
+    if (el.innerHTML !== before) return true;
+
+    // Strategy 3: direct DOM <br> insertion + input event notification
+    var sel = window.getSelection();
+    if (!sel.rangeCount) return false;
+    var range = sel.getRangeAt(0);
+    range.deleteContents();
+    var br = document.createElement('br');
+    range.insertNode(br);
+    range.setStartAfter(br);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    el.dispatchEvent(new InputEvent('input', {
+      inputType: 'insertLineBreak',
+      bubbles: true
+    }));
+    return true;
+  }
+
+  function _tryInsertTextFallback(el, text) {
+    // Strategy 0: page-bridge → CKEditor API (most reliable)
+    var bridge = window.InputVim.bridgeExec;
+    if (bridge && bridge(el, 'insertText', { text: text })) return true;
+
+    var before = el.innerHTML;
+
+    // Strategy 1: synthetic beforeinput — insertText
+    el.dispatchEvent(new InputEvent('beforeinput', {
+      inputType: 'insertText',
+      data: text,
+      bubbles: true,
+      cancelable: true,
+      composed: true
+    }));
+    if (el.innerHTML !== before) return true;
+
+    // Strategy 2: direct DOM text node insertion + input event notification
+    var sel = window.getSelection();
+    if (!sel.rangeCount) return false;
+    var range = sel.getRangeAt(0);
+    range.deleteContents();
+    var textNode = document.createTextNode(text);
+    range.insertNode(textNode);
+    range.setStartAfter(textNode);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    el.dispatchEvent(new InputEvent('input', {
+      inputType: 'insertText',
+      data: text,
+      bubbles: true
+    }));
+    return true;
   }
 
   // ── Command-line execution ─────────────────────────
@@ -403,13 +563,47 @@
       if (key === 'Enter') {
         _blocked = true;
         killEvent(e);
+        // FIX: Snapshot DOM to detect framework editor failures, then fall back if needed
+        // WHY: Framework editors (CKEditor 5 in Teams, etc.) ignore execCommand entirely
+        // WARNING: Removing the fallback breaks Enter in Teams and similar framework editors
+        var _ceEnter = window.InputVim.ElementDetector.isContentEditable(el);
+        var _enterSnap = _ceEnter ? el.innerHTML : null;
         insertNewlineWithIndent(el);
+        if (_enterSnap !== null && el.innerHTML === _enterSnap) {
+          _tryInsertParagraphFallback(el);
+        }
         return;
       }
       if (Settings.get('matchBrackets') && BRACKET_PAIRS[key]) {
         _blocked = true;
         killEvent(e);
+        // FIX: For framework editors, skip insertBracketPair (it corrupts Selection
+        //       after the no-op execCommand) and use the bridge to insert the pair.
+        // WHY: insertBracketPair uses execCommand which CKEditor intercepts via beforeinput;
+        //       the bridge inserts both chars and positions cursor between them.
+        // WARNING: Removing this breaks bracket pairing in framework editors like Teams
+        var _isFwBrk = window.InputVim.isFrameworkEditor &&
+          window.InputVim.ElementDetector.isContentEditable(el) &&
+          window.InputVim.isFrameworkEditor(el);
+        if (_isFwBrk) {
+          if (window.InputVim.bridgeExec) {
+            var pair = key + BRACKET_PAIRS[key];
+            window.InputVim.bridgeExec(el, 'insertText', { text: pair });
+            // Move cursor back between the brackets
+            var selBrk = window.getSelection();
+            selBrk.modify('move', 'backward', 'character');
+          }
+          return;
+        }
+        // FIX: Snapshot DOM to detect framework editor failures, then fall back if needed
+        // WHY: Framework editors (CKEditor 5 in Teams, etc.) ignore execCommand entirely
+        // WARNING: Removing the fallback breaks bracket typing in framework editors
+        var _ceBrk = window.InputVim.ElementDetector.isContentEditable(el);
+        var _brkSnap = _ceBrk ? el.innerHTML : null;
         insertBracketPair(el, key, BRACKET_PAIRS[key]);
+        if (_brkSnap !== null && el.innerHTML === _brkSnap) {
+          _tryInsertTextFallback(el, key);
+        }
         return;
       }
       if (Settings.get('matchBrackets') && CLOSING_BRACKETS[key]) {
@@ -420,10 +614,36 @@
         }
       }
       if (Settings.get('matchBrackets') && QUOTE_PAIRS[key]) {
+        // FIX: For framework editors, skip quote pair logic and insert the pair via bridge.
+        // WHY: insertBracketPair uses execCommand which CKEditor intercepts via beforeinput;
+        //       the bridge inserts both quotes and positions cursor between them.
+        // WARNING: Removing this breaks quote pairing in framework editors like Teams
+        var _isFwQt = window.InputVim.isFrameworkEditor &&
+          window.InputVim.ElementDetector.isContentEditable(el) &&
+          window.InputVim.isFrameworkEditor(el);
+        if (_isFwQt) {
+          _blocked = true;
+          killEvent(e);
+          if (window.InputVim.bridgeExec) {
+            var quotePair = key + key;
+            window.InputVim.bridgeExec(el, 'insertText', { text: quotePair });
+            var selQt = window.getSelection();
+            selQt.modify('move', 'backward', 'character');
+          }
+          return;
+        }
         if (!skipClosingBracket(el, key)) {
           _blocked = true;
           killEvent(e);
+          // FIX: Snapshot DOM to detect framework editor failures, then fall back if needed
+          // WHY: Framework editors (CKEditor 5 in Teams, etc.) ignore execCommand entirely
+          // WARNING: Removing the fallback breaks quote typing in framework editors
+          var _ceQt = window.InputVim.ElementDetector.isContentEditable(el);
+          var _qtSnap = _ceQt ? el.innerHTML : null;
           insertBracketPair(el, key, key);
+          if (_qtSnap !== null && el.innerHTML === _qtSnap) {
+            _tryInsertTextFallback(el, key);
+          }
           return;
         }
         _blocked = true;
