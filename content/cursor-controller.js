@@ -54,6 +54,26 @@
     }, true);
   }
 
+  // Find the nearest scrollable ancestor of el.
+  // For textareas/inputs, the element itself is the scroll container.
+  // For contenteditables, walk up to find a parent with overflow scroll/auto.
+  // Returns null if only the window is scrollable.
+  function _getScrollContainer(el) {
+    var tag = el.tagName;
+    if (tag === 'TEXTAREA' || tag === 'INPUT') return el;
+
+    var node = el;
+    while (node && node !== document.body && node !== document.documentElement) {
+      var style = getComputedStyle(node);
+      var ov = style.overflowY;
+      if ((ov === 'auto' || ov === 'scroll') && node.scrollHeight > node.clientHeight) {
+        return node;
+      }
+      node = node.parentElement;
+    }
+    return null;
+  }
+
   function update(skipScroll) {
     var el = _getActiveElement();
     if (!el) return;
@@ -73,21 +93,51 @@
       if (rect) {
         _overlay.showCursor(rect.x, rect.y, rect.width, rect.height);
         if (!skipScroll) {
+          var sc = _getScrollContainer(el);
           if (Settings.get('alwaysCentered')) {
-            var centerY = rect.y + rect.height / 2;
-            var screenCenter = window.innerHeight / 2;
-            var diff = centerY - screenCenter;
-            if (Math.abs(diff) > 1) {
-              window.scrollBy(0, diff);
-              rect = handler.getCursorRect(el, visualPos);
-              if (rect) _overlay.showCursor(rect.x, rect.y, rect.width, rect.height);
+            // Step 1: center within the scroll container (if any)
+            if (sc) {
+              var scRect = sc.getBoundingClientRect();
+              var cursorInSc = rect.y - scRect.top;
+              var scCenter = scRect.height / 2;
+              var sDiff = cursorInSc - scCenter;
+              if (Math.abs(sDiff) > 1) {
+                sc.scrollTop += sDiff;
+                rect = handler.getCursorRect(el, visualPos);
+                if (rect) _overlay.showCursor(rect.x, rect.y, rect.width, rect.height);
+              }
+            }
+            // Step 2: center on screen — if the container couldn't scroll
+            // enough (hit top/bottom), or there's no container, scroll the window
+            if (rect) {
+              var centerY = rect.y + rect.height / 2;
+              var screenCenter = window.innerHeight / 2;
+              var diff = centerY - screenCenter;
+              if (Math.abs(diff) > 1) {
+                window.scrollBy(0, diff);
+                rect = handler.getCursorRect(el, visualPos);
+                if (rect) _overlay.showCursor(rect.x, rect.y, rect.width, rect.height);
+              }
             }
           } else {
             var margin = 10;
-            if (rect.y + rect.height > window.innerHeight) {
-              window.scrollBy(0, rect.y + rect.height - window.innerHeight + margin);
-            } else if (rect.y < 0) {
-              window.scrollBy(0, rect.y - margin);
+            // Step 1: keep visible within scroll container
+            if (sc) {
+              var scRect2 = sc.getBoundingClientRect();
+              if (rect.y + rect.height > scRect2.bottom) {
+                sc.scrollTop += rect.y + rect.height - scRect2.bottom + margin;
+              } else if (rect.y < scRect2.top) {
+                sc.scrollTop += rect.y - scRect2.top - margin;
+              }
+              rect = handler.getCursorRect(el, visualPos);
+            }
+            // Step 2: keep visible on screen
+            if (rect) {
+              if (rect.y + rect.height > window.innerHeight) {
+                window.scrollBy(0, rect.y + rect.height - window.innerHeight + margin);
+              } else if (rect.y < 0) {
+                window.scrollBy(0, rect.y - margin);
+              }
             }
           }
         }
