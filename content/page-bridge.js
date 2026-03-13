@@ -110,6 +110,42 @@
           success = true;
           break;
 
+        case 'removeBlock':
+          // Remove the entire block element(s) containing the current selection.
+          // Used by visual line delete so the <p> structure is removed, not just
+          // its text content (which is all deleteContent does).
+          _syncSelection(editor);
+          editor.model.change(function (writer) {
+            var sel = editor.model.document.selection;
+            var blocks = [];
+            var iter = sel.getSelectedBlocks();
+            var item = iter.next();
+            while (!item.done) {
+              blocks.push(item.value);
+              item = iter.next();
+            }
+            // Don't remove the very last block in the editor (CKEditor requires
+            // at least one block element to exist).
+            var root = editor.model.document.getRoot();
+            if (blocks.length >= root.childCount) {
+              // Keep the last block but clear its content
+              for (var bi = blocks.length - 1; bi > 0; bi--) {
+                writer.remove(blocks[bi]);
+              }
+              // Clear the remaining block
+              var remaining = blocks[0];
+              if (remaining.childCount > 0) {
+                writer.remove(writer.createRangeIn(remaining));
+              }
+            } else {
+              for (var bj = blocks.length - 1; bj >= 0; bj--) {
+                writer.remove(blocks[bj]);
+              }
+            }
+          });
+          success = true;
+          break;
+
         case 'undo':
           for (var u = 0; u < (cmd.count || 1); u++) {
             editor.execute('undo');

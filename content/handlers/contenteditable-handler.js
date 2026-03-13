@@ -1009,6 +1009,22 @@
       this._saveUndo(el);
       Register.set(deleted, 'line');
       deleteRange(el, from, to);
+
+      // FIX: After deleteRange, framework editors may leave empty <p><br></p>
+      //   blocks because CKEditor's deleteContent only clears text, not the
+      //   block structure. Use deleteBackward to merge/remove leftover empties.
+      // WHY: Without cleanup, linewise delete (VD) needs two presses in Teams
+      // WARNING: Removing this will cause linewise delete to need 2 VDs in Teams
+      if (_isFrameworkEditor(el)) {
+        var afterText = getFlatText(el);
+        var curPos = Math.min(from, Math.max(afterText.length - 1, 0));
+        var afterInfo = TU.getLineInfo(afterText, curPos);
+        if (afterInfo.lineText === '' && afterText.length > afterInfo.lineEnd - afterInfo.lineStart + 1) {
+          setCursorAt(el, curPos);
+          _bridgeExec(el, 'deleteBackward');
+        }
+      }
+
       var newText = getFlatText(el);
       setCursorAt(el, Math.min(from, Math.max(newText.length - 1, 0)));
       TU.fireInputEvent(el);
