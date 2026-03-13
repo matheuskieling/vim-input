@@ -830,7 +830,20 @@
             setCursorAt(el, emptyPosO);
           }, 0);
         } else if (oIndentC) {
-          _fwO ? _bridgeExec(el, 'insertText', { text: oIndentC }) : _execCmd('insertText', oIndentC);
+          // FIX: Check if the editor (e.g. CodeMirror) already auto-indented after insertParagraph
+          // WHY: CodeMirror intercepts insertParagraph and runs its own auto-indent, so inserting
+          //   our full indent on top doubles the indentation
+          // WARNING: Removing this will cause doubled indentation in CodeMirror-based editors (e.g. GitHub)
+          var newTextO = getFlatText(el);
+          var curPosO = flatOffsetFromSelection(el);
+          var curLineO = TU.getLineInfo(newTextO, curPosO);
+          var existingMatchO = curLineO.lineText.match(/^(\s*)/);
+          var existingLenO = existingMatchO ? existingMatchO[1].length : 0;
+          var neededLenO = oIndentC.length;
+          if (existingLenO < neededLenO) {
+            var diffO = oIndentC.substring(existingLenO);
+            _fwO ? _bridgeExec(el, 'insertText', { text: diffO }) : _execCmd('insertText', diffO);
+          }
         }
         TU.fireInputEvent(el);
         break;
@@ -886,7 +899,19 @@
         setTimeout(function () {
           setCursorAt(el, targetPosU);
           if (!midBlockU && oUIndentC) {
-            _fwU ? _bridgeExec(el, 'insertText', { text: oUIndentC }) : _execCmd('insertText', oUIndentC);
+            // FIX: Check if the editor already auto-indented after insertParagraph (same as O_LOWER)
+            // WHY: CodeMirror intercepts insertParagraph and runs its own auto-indent, doubling indent
+            // WARNING: Removing this will cause doubled indentation in CodeMirror-based editors
+            var newTextU = getFlatText(el);
+            var curPosU = flatOffsetFromSelection(el);
+            var curLineU = TU.getLineInfo(newTextU, curPosU);
+            var existingMatchU = curLineU.lineText.match(/^(\s*)/);
+            var existingLenU = existingMatchU ? existingMatchU[1].length : 0;
+            var neededLenU = oUIndentC.length;
+            if (existingLenU < neededLenU) {
+              var diffU = oUIndentC.substring(existingLenU);
+              _fwU ? _bridgeExec(el, 'insertText', { text: diffU }) : _execCmd('insertText', diffU);
+            }
           }
         }, 0);
         break;

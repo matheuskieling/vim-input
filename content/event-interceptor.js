@@ -223,13 +223,35 @@
       }
 
       var blockText = (blockNode && blockNode !== el) ? blockNode.textContent : '';
+      // FIX: Use Range-based character detection to work across span boundaries
+      // WHY: CodeMirror wraps brackets in <span class="cm-matchingBracket">, so the cursor
+      //   may sit at a text node boundary or between element nodes; text-node-only
+      //   detection misses the char before/after the cursor, breaking smart indent after {
+      // WARNING: Removing this breaks smart indent after { in CodeMirror-based editors
       var charBeforeCE = '';
-      if (startNode.nodeType === 3 && startOff > 0) {
-        charBeforeCE = startNode.textContent[startOff - 1];
-      }
       var charAfterCE = '';
-      if (startNode.nodeType === 3 && startOff < startNode.textContent.length) {
-        charAfterCE = startNode.textContent[startOff];
+      if (blockNode && blockNode !== el) {
+        try {
+          var preRangeCE = document.createRange();
+          preRangeCE.setStart(blockNode, 0);
+          preRangeCE.setEnd(startNode, startOff);
+          var preTextCE = preRangeCE.toString();
+          if (preTextCE.length > 0) charBeforeCE = preTextCE[preTextCE.length - 1];
+        } catch (e) {}
+        try {
+          var postRangeCE = document.createRange();
+          postRangeCE.setStart(startNode, startOff);
+          postRangeCE.setEnd(blockNode, blockNode.childNodes.length);
+          var postTextCE = postRangeCE.toString();
+          if (postTextCE.length > 0) charAfterCE = postTextCE[0];
+        } catch (e) {}
+      } else {
+        if (startNode.nodeType === 3 && startOff > 0) {
+          charBeforeCE = startNode.textContent[startOff - 1];
+        }
+        if (startNode.nodeType === 3 && startOff < startNode.textContent.length) {
+          charAfterCE = startNode.textContent[startOff];
+        }
       }
 
       // FIX: Split braces — Enter between {} in contenteditable
@@ -254,7 +276,29 @@
       var indentCE = TU.computeNewLineIndent(blockText, doSmartCE, tabSize);
 
       document.execCommand('insertParagraph');
-      if (indentCE) document.execCommand('insertText', false, indentCE);
+      if (indentCE) {
+        // FIX: Check if editor already auto-indented after insertParagraph
+        // WHY: CodeMirror intercepts insertParagraph and may run its own auto-indent,
+        //   so inserting our full indent on top would double the indentation
+        // WARNING: Removing this will cause doubled indentation in CodeMirror-based editors
+        var selAfterCE = window.getSelection();
+        if (selAfterCE.rangeCount) {
+          var rangeAfterCE = selAfterCE.getRangeAt(0);
+          var newBlockCE = rangeAfterCE.startContainer;
+          if (newBlockCE.nodeType === 3) newBlockCE = newBlockCE.parentNode;
+          while (newBlockCE && newBlockCE !== el &&
+                 !(/^(P|DIV|LI|H[1-6]|PRE|BLOCKQUOTE)$/.test(newBlockCE.tagName))) {
+            newBlockCE = newBlockCE.parentNode;
+          }
+          var newBlockTextCE = (newBlockCE && newBlockCE !== el) ? newBlockCE.textContent : '';
+          var existMatchCE = newBlockTextCE.match(/^(\s*)/);
+          var existLenCE = existMatchCE ? existMatchCE[1].length : 0;
+          if (existLenCE < indentCE.length) {
+            var diffCE = indentCE.substring(existLenCE);
+            document.execCommand('insertText', false, diffCE);
+          }
+        }
+      }
     }
   }
 

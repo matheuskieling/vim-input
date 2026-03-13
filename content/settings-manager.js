@@ -15,6 +15,7 @@
     highlightYank: true,
     halfPageJump: 20,
     alwaysCentered: true,
+    lineNumbers: 'relative',
   };
 
   var _cache = {};

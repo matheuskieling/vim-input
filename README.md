@@ -310,6 +310,7 @@ Click the extension icon in the toolbar to open the settings popup.
 | **Highlight yank** | Flash highlight on yanked text | On |
 | **Ctrl+D/U lines** | Number of lines to jump with `Ctrl+D` / `Ctrl+U` | 20 |
 | **Always centered** | Keep the cursor vertically centered in the viewport | On |
+| **Line numbers (:e)** | Line number style in the scratch buffer (Off, Absolute, or Relative) | Relative |
 | **Excluded sites** | URL patterns where the extension is disabled | None |
 
 Settings sync across Chrome devices via `chrome.storage.sync`.

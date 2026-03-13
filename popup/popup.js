@@ -10,6 +10,7 @@
   var highlightYankToggle = document.getElementById('highlight-yank');
   var halfPageJumpInput = document.getElementById('half-page-jump');
   var alwaysCenteredToggle = document.getElementById('always-centered');
+  var lineNumbersSelect = document.getElementById('line-numbers');
   var excludeBtn = document.getElementById('exclude-btn');
   var currentUrlText = document.getElementById('current-url-text');
   var excludeList = document.getElementById('exclude-list');
@@ -49,7 +50,7 @@
   // ── Load settings ───────────────────────────────────
 
   chrome.storage.sync.get(
-    { enabled: true, startMode: 'NORMAL', excludePatterns: [], matchBrackets: false, tabSize: 4, indentMode: 'smart', useClipboard: true, highlightYank: true, halfPageJump: 20, alwaysCentered: true },
+    { enabled: true, startMode: 'NORMAL', excludePatterns: [], matchBrackets: false, tabSize: 4, indentMode: 'smart', useClipboard: true, highlightYank: true, halfPageJump: 20, alwaysCentered: true, lineNumbers: 'relative' },
     function (items) {
       enabledToggle.checked = items.enabled;
       startModeSelect.value = items.startMode || 'INSERT';
@@ -60,6 +61,7 @@
       highlightYankToggle.checked = items.highlightYank || false;
       halfPageJumpInput.value = String(items.halfPageJump || 20);
       alwaysCenteredToggle.checked = items.alwaysCentered || false;
+      lineNumbersSelect.value = items.lineNumbers || 'relative';
       excludePatterns = items.excludePatterns || [];
       renderExcludeList();
       updateExcludeBtn();
@@ -77,6 +79,7 @@
   highlightYankToggle.addEventListener('change', saveSettings);
   halfPageJumpInput.addEventListener('change', saveSettings);
   alwaysCenteredToggle.addEventListener('change', saveSettings);
+  lineNumbersSelect.addEventListener('change', saveSettings);
 
   // ── Exclude current site ────────────────────────────
 
@@ -183,6 +186,7 @@
       highlightYank: highlightYankToggle.checked,
       halfPageJump: parseInt(halfPageJumpInput.value, 10) || 20,
       alwaysCentered: alwaysCenteredToggle.checked,
+      lineNumbers: lineNumbersSelect.value,
       excludePatterns: excludePatterns,
     }, function () {
       statusEl.textContent = 'Saved!';
