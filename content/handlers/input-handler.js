@@ -367,10 +367,10 @@
       var lastVl = vLines[vi + count - 1];
       startOffset = firstVl.start;
       endOffset = lastVl.end;
-      // Include trailing newline if present, or leading newline if at end
+      // Include trailing newline if present, or leading newline if at very end of text
       if (endOffset < text.length && text[endOffset] === '\n') {
         endOffset++;
-      } else if (startOffset > 0 && text[startOffset - 1] === '\n') {
+      } else if (endOffset >= text.length && startOffset > 0 && text[startOffset - 1] === '\n') {
         startOffset--;
       }
       deleted = text.substring(startOffset, endOffset);
@@ -661,8 +661,11 @@
         var endVi = Math.max(anchorVi, headVi);
         start = vLines[startVi].start;
         end = vLines[endVi].end;
-        if (end < text.length) end++;
-        else if (start > 0) start--;
+        // FIX: Only include trailing newline at real line boundaries, not soft-wrap boundaries
+        // WHY: At a soft-wrap the next char is content, not \n — including it grabs an extra char
+        // WARNING: Removing this check makes Vy/VD grab the first char of the next visual line
+        if (end < text.length && text[end] === '\n') end++;
+        else if (end >= text.length && start > 0 && text[start - 1] === '\n') start--;
         console.log('[IH visOp vLines] ' + JSON.stringify({ from: start, to: end }));
       } else {
         var info = TU.getLineInfo(text, start);

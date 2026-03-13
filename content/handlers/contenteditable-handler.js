@@ -720,10 +720,10 @@
     var startOffset = firstVl.start;
     var endOffset = lastVl.end;
 
-    // Include trailing newline if present, or leading newline if at end
+    // Include trailing newline if present, or leading newline if at very end of text
     if (endOffset < text.length && text[endOffset] === '\n') {
       endOffset++;
-    } else if (startOffset > 0 && text[startOffset - 1] === '\n') {
+    } else if (endOffset >= text.length && startOffset > 0 && text[startOffset - 1] === '\n') {
       startOffset--;
     }
 
@@ -1041,9 +1041,12 @@
       var from = vLines[startVi].start;
       var to = vLines[endVi].end;
 
-      // Include the newline separator so the block/line is fully removed
-      if (to < text.length) to++;
-      else if (from > 0) from--;
+      // FIX: Only include trailing newline at block boundaries, not at soft-wrap boundaries
+      // WHY: At a soft-wrap boundary the next char is content, not \n — including it
+      //   causes Vy/VD to grab the first character of the next visual line
+      // WARNING: Removing this check makes linewise yank/delete grab an extra char on wrapped lines
+      if (to < text.length && text[to] === '\n') to++;
+      else if (to >= text.length && from > 0 && text[from - 1] === '\n') from--;
 
       var deleted = text.substring(from, to);
 
