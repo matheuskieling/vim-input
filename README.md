@@ -69,6 +69,10 @@ Focus any text input, textarea, or contenteditable element on any page. You star
 
 A small color-coded badge next to the input shows the current mode.
 
+### Disabling Vim on an input (`:q`)
+
+If you want to type normally without Vim intercepting your keys, type `:q` in Normal mode. This **disables Vim on the current input** and gives you back standard browser editing &mdash; no mode badge, no key interception, just a regular text field. Vim will reactivate automatically the next time you focus that input.
+
 ---
 
 ## Modes
@@ -97,7 +101,7 @@ A small color-coded badge next to the input shows the current mode.
 | `O` | Open new line above and enter Insert |
 | `v` | Enter Visual mode (toggle) |
 | `V` | Enter Visual Line mode (toggle) |
-| `:q` | Disable vim on the current input (reactivates on refocus) |
+| `:q` | Disable Vim on the current input &mdash; returns to normal browser editing. Vim reactivates when you refocus the input |
 | `:e` | Open scratch buffer (see below) |
 
 ### Motions
