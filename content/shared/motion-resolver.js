@@ -304,8 +304,18 @@
           newPos = TU.wordEndBack(text, newPos); break;
         case MotionType.WORD_END_BACK_BIG:
           newPos = TU.wordEndBackBig(text, newPos); break;
+        // FIX: 0 respects visual lines when vLines are available
+        // WHY: User expects 0 to go to the start of the visual (soft-wrapped) line,
+        //   consistent with $ and ^ which already respect visual lines
+        // WARNING: Removing the vLines branch makes 0 jump to the real line start
         case MotionType.LINE_START:
-          newPos = TU.getLineInfo(text, newPos).lineStart; break;
+          if (vLines) {
+            var lsVi = TU.findVisualLine(vLines, newPos);
+            newPos = vLines[lsVi].start;
+          } else {
+            newPos = TU.getLineInfo(text, newPos).lineStart;
+          }
+          break;
         // FIX: $ and ^ respect visual lines when vLines are available
         // WHY: User wants $ and ^ to navigate within visual (soft-wrapped) lines
         // WARNING: Removing vLines branches makes $ and ^ use real lines only

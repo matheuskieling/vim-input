@@ -349,20 +349,42 @@
 
   // ── Line Operator ───────────────────────────────────
 
+  // FIX: dd/cc/yy use visual lines so they operate on soft-wrapped lines, not real lines
+  // WHY: With soft wrap, a single real line may span multiple visual lines; dd should
+  //   delete only the current visual line, matching Vim's behavior in wrap mode
+  // WARNING: Removing this makes dd/cc/yy delete entire real lines ignoring soft wraps
   InputHandler.prototype._doLineOperator = function (el, command) {
     var text = el.value;
     var pos = el.selectionStart;
-    var lineNum = TU.getLineNumber(text, pos);
-    var lines = text.split('\n');
-    var count = Math.min(command.count, lines.length - lineNum);
+    var vLines = getElementVisualLines(el);
 
-    var startOffset = TU.getLineStartOffset(text, lineNum);
-    var endLine = lineNum + count - 1;
-    var endOffset = endLine < lines.length - 1
-      ? TU.getLineStartOffset(text, endLine + 1)
-      : text.length;
+    var startOffset, endOffset, deleted;
 
-    var deleted = text.substring(startOffset, endOffset);
+    if (vLines) {
+      var vi = TU.findVisualLine(vLines, pos);
+      var count = Math.min(command.count, vLines.length - vi);
+      var firstVl = vLines[vi];
+      var lastVl = vLines[vi + count - 1];
+      startOffset = firstVl.start;
+      endOffset = lastVl.end;
+      // Include trailing newline if present, or leading newline if at end
+      if (endOffset < text.length && text[endOffset] === '\n') {
+        endOffset++;
+      } else if (startOffset > 0 && text[startOffset - 1] === '\n') {
+        startOffset--;
+      }
+      deleted = text.substring(startOffset, endOffset);
+    } else {
+      var lineNum = TU.getLineNumber(text, pos);
+      var lines = text.split('\n');
+      var count = Math.min(command.count, lines.length - lineNum);
+      startOffset = TU.getLineStartOffset(text, lineNum);
+      var endLine = lineNum + count - 1;
+      endOffset = endLine < lines.length - 1
+        ? TU.getLineStartOffset(text, endLine + 1)
+        : text.length;
+      deleted = text.substring(startOffset, endOffset);
+    }
 
     if (command.operator === OperatorType.YANK) {
       Register.set(deleted, 'line');
@@ -383,9 +405,18 @@
     el.value = before + after;
 
     var newPos = Math.min(startOffset, el.value.length);
-    var info = TU.getLineInfo(el.value, newPos);
-    var firstNonBlank = info.lineText.match(/^\s*/);
-    setCursor(el, info.lineStart + (firstNonBlank ? firstNonBlank[0].length : 0));
+    var newVLines = getElementVisualLines(el);
+    if (newVLines) {
+      var newVi = TU.findVisualLine(newVLines, Math.min(newPos, el.value.length));
+      var newVl = newVLines[newVi];
+      var vlText = el.value.substring(newVl.start, newVl.end);
+      var fnb = vlText.match(/^\s*/);
+      setCursor(el, newVl.start + (fnb ? fnb[0].length : 0));
+    } else {
+      var info = TU.getLineInfo(el.value, newPos);
+      var firstNonBlank = info.lineText.match(/^\s*/);
+      setCursor(el, info.lineStart + (firstNonBlank ? firstNonBlank[0].length : 0));
+    }
 
     TU.fireInputEvent(el);
   };
@@ -672,18 +703,31 @@
     var text = el.value;
     var pos = el.selectionStart;
 
+    // FIX: Line-mode paste respects visual lines so p/P paste relative to visual line
+    // WHY: If dd yanks a visual line, p should paste at the visual line boundary
+    // WARNING: Removing this makes line-mode paste use real line boundaries only
     if (reg.type === 'line') {
-      var info = TU.getLineInfo(text, pos);
+      var vLines = getElementVisualLines(el);
+      var lineStart, lineEnd;
+      if (vLines) {
+        var vi = TU.findVisualLine(vLines, pos);
+        lineStart = vLines[vi].start;
+        lineEnd = vLines[vi].end;
+      } else {
+        var info = TU.getLineInfo(text, pos);
+        lineStart = info.lineStart;
+        lineEnd = info.lineEnd;
+      }
       if (before) {
         var content = reg.content;
         if (content[content.length - 1] !== '\n') content += '\n';
-        el.value = text.substring(0, info.lineStart) + content + text.substring(info.lineStart);
-        setCursor(el, info.lineStart);
+        el.value = text.substring(0, lineStart) + content + text.substring(lineStart);
+        setCursor(el, lineStart);
       } else {
         var content2 = reg.content;
         if (content2[content2.length - 1] !== '\n') content2 += '\n';
-        el.value = text.substring(0, info.lineEnd) + '\n' + content2.replace(/\n$/, '') + text.substring(info.lineEnd);
-        setCursor(el, info.lineEnd + 1);
+        el.value = text.substring(0, lineEnd) + '\n' + content2.replace(/\n$/, '') + text.substring(lineEnd);
+        setCursor(el, lineEnd + 1);
       }
     } else {
       var cInfo = TU.getLineInfo(text, pos);

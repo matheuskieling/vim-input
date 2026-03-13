@@ -706,16 +706,26 @@
     TU.fireInputEvent(el);
   };
 
+  // FIX: dd/cc/yy use visual lines so they operate on soft-wrapped lines, not real lines
+  // WHY: With soft wrap, a single real line may span multiple visual lines; dd should
+  //   delete only the current visual line, matching Vim's behavior in wrap mode
+  // WARNING: Removing this makes dd/cc/yy delete entire real lines ignoring soft wraps
   ContentEditableHandler.prototype._doLineOperator = function (el, text, pos, command) {
-    var lineNum = TU.getLineNumber(text, pos);
-    var lines = text.split('\n');
-    var count = Math.min(command.count, lines.length - lineNum);
+    var vLines = computeCEVisualLines(el, text);
+    var vi = TU.findVisualLine(vLines, pos);
+    var count = Math.min(command.count, vLines.length - vi);
 
-    var startOffset = TU.getLineStartOffset(text, lineNum);
-    var endLine = lineNum + count - 1;
-    var endOffset = endLine < lines.length - 1
-      ? TU.getLineStartOffset(text, endLine + 1)
-      : text.length;
+    var firstVl = vLines[vi];
+    var lastVl = vLines[vi + count - 1];
+    var startOffset = firstVl.start;
+    var endOffset = lastVl.end;
+
+    // Include trailing newline if present, or leading newline if at end
+    if (endOffset < text.length && text[endOffset] === '\n') {
+      endOffset++;
+    } else if (startOffset > 0 && text[startOffset - 1] === '\n') {
+      startOffset--;
+    }
 
     var deleted = text.substring(startOffset, endOffset);
 
@@ -1103,18 +1113,24 @@
 
     this._saveUndo(el);
 
+    // FIX: Line-mode paste respects visual lines so p/P paste relative to visual line
+    // WHY: If dd yanks a visual line, p should paste at the visual line boundary
+    // WARNING: Removing this makes line-mode paste use real line boundaries only
     if (reg.type === 'line') {
-      var info = TU.getLineInfo(text, pos);
+      var vLines = computeCEVisualLines(el, text);
+      var vi = TU.findVisualLine(vLines, pos);
+      var lineStart = vLines[vi].start;
+      var lineEnd = vLines[vi].end;
       var content = reg.content;
       if (content[content.length - 1] === '\n') content = content.substring(0, content.length - 1);
       if (before) {
-        insertParagraphAt(el, info.lineStart);
-        insertTextAt(el, info.lineStart, content);
-        setCursorAt(el, info.lineStart);
+        insertParagraphAt(el, lineStart);
+        insertTextAt(el, lineStart, content);
+        setCursorAt(el, lineStart);
       } else {
-        insertParagraphAt(el, info.lineEnd);
-        insertTextAt(el, info.lineEnd + 1, content);
-        setCursorAt(el, info.lineEnd + 1);
+        insertParagraphAt(el, lineEnd);
+        insertTextAt(el, lineEnd + 1, content);
+        setCursorAt(el, lineEnd + 1);
       }
     } else {
       var cInfo = TU.getLineInfo(text, pos);
