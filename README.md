@@ -272,6 +272,10 @@ The **scratch buffer** solves this by giving you a plain `<textarea>` overlay wi
 
 The scratch buffer is completely isolated from the original input. Your edits only apply when you explicitly write back with `:wq` or `:w`. Discarding with `:q!` leaves the original input untouched.
 
+**Downsides:**
+- Writing back to a rich text editor (contenteditable) replaces the content as plain text &mdash; all formatting, links, images, and embedded media are lost
+- The buffer works with raw text only, so any structure maintained by the original editor (e.g., bullet lists, code blocks, tables) is flattened
+
 ### Visual Mode
 
 In Visual or Visual Line mode, motions extend the selection. Text objects set the selection. Then apply an operator:
