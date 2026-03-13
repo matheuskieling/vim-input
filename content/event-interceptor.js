@@ -41,6 +41,9 @@
     }, true);
     document.addEventListener('keydown', blockIfBlocked, true);
     window.addEventListener('beforeinput', function (e) {
+      // Scratch buffer write-back uses execCommand which fires beforeinput;
+      // the bypass flag lets those events through to the target editor.
+      if (window.InputVim._bypassInputBlock) return;
       var el = _getActiveElement();
       if (!el) return;
       if (_engine.mode !== Mode.INSERT) killEvent(e);
@@ -390,6 +393,40 @@
   // ── Command-line execution ─────────────────────────
 
   function executeCmdLine(cmd, el) {
+    var SB = window.InputVim.ScratchBuffer;
+
+    // ── Scratch buffer commands ──────────────────────
+    if (SB && SB.isActive()) {
+      if (cmd === 'wq' || cmd === 'x') {
+        SB.close(true);
+        return;
+      }
+      if (cmd === 'w') {
+        SB.write();
+        return;
+      }
+      if (cmd === 'q!' || cmd === 'q') {
+        SB.close(false);
+        return;
+      }
+      // Don't open nested scratch buffers
+      if (cmd === 'e') return;
+    }
+
+    // ── Open scratch buffer ──────────────────────────
+    if (cmd === 'e' && SB) {
+      var handler = _getHandler(el);
+      if (!handler) return;
+
+      var text = handler.getFullText(el);
+      var cursorPos = handler.getCursorPosition(el);
+
+      SB.open(el, text, cursorPos, function (newText) {
+        handler.setFullText(el, newText);
+      });
+      return;
+    }
+
     if (cmd === 'q') {
       window.InputVim.FocusManager.deactivate();
     }

@@ -410,6 +410,21 @@
     }
 
     if (forOperator) {
+      // FIX: Vim's exclusive-linewise adjustment for w/W motions.
+      // WHY: dw on the last word of a line was deleting across line boundaries
+      // (e.g. "notes\n    \n" instead of just "notes"), because wordForward
+      // skips whitespace including newlines to find the next word.
+      // WARNING: Removing this causes dw/dW to over-delete when the word is
+      // at the end of a line, pulling up content from following lines.
+      if ((motion === MotionType.WORD_FORWARD || motion === MotionType.WORD_FORWARD_BIG) && newPos > pos) {
+        var wStartCls = TU.charClass(text[pos]);
+        if (wStartCls !== 2) {
+          var wLineEnd = TU.getLineInfo(text, pos).lineEnd;
+          if (newPos > wLineEnd) {
+            newPos = wLineEnd;
+          }
+        }
+      }
       return { from: Math.min(pos, newPos), to: Math.max(pos, newPos) };
     }
     return newPos;

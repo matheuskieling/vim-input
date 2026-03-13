@@ -146,6 +146,32 @@
           success = true;
           break;
 
+        case 'replaceAll':
+          // Replace the entire editor content with plain text split into
+          // paragraphs.  Used by the scratch buffer :wq write-back.
+          editor.model.change(function (writer) {
+            var root = editor.model.document.getRoot();
+            // Clear all existing content
+            while (root.childCount > 0) {
+              writer.remove(root.getChild(0));
+            }
+            // Insert new paragraphs
+            var lines = (cmd.text || '').split('\n');
+            for (var li = 0; li < lines.length; li++) {
+              var para = writer.createElement('paragraph');
+              if (lines[li]) {
+                writer.insertText(lines[li], para, 0);
+              }
+              writer.insert(para, root, li);
+            }
+            // Cursor at start
+            if (root.childCount > 0) {
+              writer.setSelection(root.getChild(0), 0);
+            }
+          });
+          success = true;
+          break;
+
         case 'undo':
           for (var u = 0; u < (cmd.count || 1); u++) {
             editor.execute('undo');

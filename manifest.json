@@ -43,6 +43,7 @@
         "content/element-detector.js",
         "content/cursor-controller.js",
         "content/focus-manager.js",
+        "content/scratch-buffer.js",
         "content/event-interceptor.js",
         "content/main.js"
       ],

@@ -667,7 +667,21 @@
     Register.set(deleted, regType);
 
     deleteRange(el, range.from, range.to);
-    setCursorAt(el, range.from);
+    // FIX: Clamp cursor to last character on line after delete.
+    // WHY: When dw deletes the last word on a line, range.from lands on the
+    // newline character, placing the cursor on the next line.
+    // WARNING: Removing this causes the cursor to jump to the wrong line after dw.
+    var cursorPos = range.from;
+    if (command.operator === OperatorType.DELETE) {
+      var newText = getFlatText(el);
+      if (newText.length > 0) {
+        cursorPos = Math.min(cursorPos, newText.length - 1);
+        var li = TU.getLineInfo(newText, cursorPos);
+        var maxPos = li.lineEnd > li.lineStart ? li.lineEnd - 1 : li.lineStart;
+        if (cursorPos > maxPos) cursorPos = maxPos;
+      }
+    }
+    setCursorAt(el, cursorPos);
     TU.fireInputEvent(el);
   };
 
@@ -1094,6 +1108,11 @@
     // WARNING: Removing this breaks undo in framework editors
     if (_isFrameworkEditor(el)) {
       _bridgeExec(el, 'undo', { count: count });
+      // FIX: Collapse selection after framework undo.
+      // WHY: CKEditor's undo can leave the restored text selected, showing
+      // a visible highlight instead of a cursor.
+      // WARNING: Removing this causes selected/highlighted text after undo.
+      setCursorAt(el, flatOffsetFromSelection(el));
       return;
     }
     var undo = this._getUndo(el);
@@ -1500,6 +1519,67 @@
       return { anchor: anchorFlat, head: focusFlat - 1 };
     }
     return { anchor: anchorFlat - 1, head: focusFlat };
+  };
+
+  // ── Scratch buffer support ──────────────────────────
+
+  ContentEditableHandler.prototype.getFullText = function (el) {
+    return getFlatText(el);
+  };
+
+  ContentEditableHandler.prototype.getCursorPosition = function (el) {
+    return flatOffsetFromSelection(el);
+  };
+
+  ContentEditableHandler.prototype.setFullText = function (el, text) {
+    if (_isFrameworkEditor(el)) {
+      // CKEditor: use bridge API (most reliable)
+      _bridgeExec(el, 'replaceAll', { text: text });
+      setCursorAt(el, 0);
+      TU.fireInputEvent(el);
+    } else {
+      // FIX: For non-framework editors (Lexical, ProseMirror, etc.), use
+      // execCommand-based approach that routes through the editor's own
+      // command pipeline instead of manipulating DOM selection + synthetic paste.
+      // WHY: Lexical maintains its own selection model and only syncs from DOM
+      // via async selectionchange. Setting DOM selection via Range API then
+      // dispatching a synthetic paste caused content to double because Lexical's
+      // internal selection was still collapsed at paste time.
+      // WARNING: Removing this will break scratch buffer write-back for Reddit/Lexical.
+      window.InputVim._bypassInputBlock = true;
+
+      // FIX: Defer start so scratch buffer close()'s setTimeout(el.focus, 0) fires
+      // first — that focus call resets the DOM selection, which would break our
+      // selectAll if we started immediately.
+      // WHY: close() schedules el.focus() at t=0 to return focus after discard;
+      // when saving, it still fires and collapses the selection we need.
+      // WARNING: Removing this delay will cause selectAll+paste to operate on
+      // a collapsed selection, resulting in content doubling instead of replacing.
+      setTimeout(function () {
+        el.focus();
+        document.execCommand('selectAll');
+
+        // Wait for the framework's selectionchange handler to sync its
+        // internal selection model, then paste directly — Lexical's paste
+        // handler replaces the selected content in one operation.
+        // execCommand('delete') is NOT used because Lexical only partially
+        // clears content through it (deletes one block, not the full selection).
+        setTimeout(function () {
+          // For empty text, paste a space — execCommand('delete') can't reliably
+          // clear Lexical editors, but paste-with-selection replaces everything.
+          var pasteText = text.length > 0 ? text : ' ';
+          var dt = new DataTransfer();
+          dt.setData('text/plain', pasteText);
+          el.dispatchEvent(new ClipboardEvent('paste', {
+            bubbles: true,
+            cancelable: true,
+            clipboardData: dt
+          }));
+          window.InputVim._bypassInputBlock = false;
+          TU.fireInputEvent(el);
+        }, 50);
+      }, 100);
+    }
   };
 
   window.InputVim = window.InputVim || {};

@@ -307,7 +307,18 @@
     Register.set(deleted, regType);
 
     el.value = text.substring(0, range.from) + text.substring(range.to);
-    setCursor(el, range.from);
+    // FIX: Clamp cursor to last character on line after delete.
+    // WHY: When dw deletes the last word on a line, range.from lands on the
+    // newline character, placing the cursor on the next line.
+    // WARNING: Removing this causes the cursor to jump to the wrong line after dw.
+    var cursorPos = range.from;
+    if (command.operator === OperatorType.DELETE && el.value.length > 0) {
+      cursorPos = Math.min(cursorPos, el.value.length - 1);
+      var li = TU.getLineInfo(el.value, cursorPos);
+      var maxPos = li.lineEnd > li.lineStart ? li.lineEnd - 1 : li.lineStart;
+      if (cursorPos > maxPos) cursorPos = maxPos;
+    }
+    setCursor(el, cursorPos);
     TU.fireInputEvent(el);
   };
 
@@ -963,6 +974,22 @@
     } catch (e) {
       return null;
     }
+  };
+
+  // ── Scratch buffer support ──────────────────────────
+
+  InputHandler.prototype.getFullText = function (el) {
+    return el.value;
+  };
+
+  InputHandler.prototype.getCursorPosition = function (el) {
+    return el.selectionStart;
+  };
+
+  InputHandler.prototype.setFullText = function (el, text) {
+    el.value = text;
+    el.selectionStart = el.selectionEnd = 0;
+    TU.fireInputEvent(el);
   };
 
   // ── Expose ──────────────────────────────────────────
