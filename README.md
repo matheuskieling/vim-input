@@ -254,6 +254,10 @@ Some web editors (e.g., Reddit's Lexical editor) use custom frameworks that figh
 
 The **scratch buffer** solves this by giving you a plain `<textarea>` overlay with full, reliable Vim support. Edit freely, then write the result back.
 
+<p align="center">
+  <img src="images/v-line-mode-res.png" alt="Scratch buffer" width="700">
+</p>
+
 | Command | Action |
 |---------|--------|
 | `:e` | Open scratch buffer pre-filled with the current input's text |

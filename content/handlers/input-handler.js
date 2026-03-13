@@ -996,4 +996,5 @@
 
   window.InputVim = window.InputVim || {};
   window.InputVim.InputHandler = InputHandler;
+  window.InputVim.InputHandler.getElementVisualLines = getElementVisualLines;
 })();

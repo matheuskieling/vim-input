@@ -17,13 +17,9 @@
   var _gutter = null;
   var _textarea = null;
   var _label = null;
-  var _mirror = null;
   var _active = false;
   var _originalText = '';
   var _lineNumMode = 'relative';
-  var _singleLineH = 0;
-  var _cachedText = null;
-  var _cachedWraps = null;
 
   var FONT = 'monospace';
   var FONT_SIZE = '14px';
@@ -76,19 +72,9 @@
     _textarea.setAttribute('autocorrect', 'off');
     _textarea.setAttribute('autocapitalize', 'off');
 
-    // Hidden mirror div — same font/wrapping as textarea, used to measure
-    // how many visual lines each logical line occupies.
-    _mirror = document.createElement('div');
-    _mirror.style.cssText =
-      'position:absolute;left:-9999px;top:-9999px;visibility:hidden;' +
-      'font-family:' + FONT + ';font-size:' + FONT_SIZE + ';line-height:' + LINE_HEIGHT + ';' +
-      'white-space:pre-wrap;word-wrap:break-word;box-sizing:content-box;' +
-      'tab-size:4;padding:0;margin:0;border:none;overflow:hidden;';
-
     _editorWrap.appendChild(_gutter);
     _editorWrap.appendChild(_textarea);
     _container.appendChild(_editorWrap);
-    _container.appendChild(_mirror);
     document.documentElement.appendChild(_container);
 
     // Update line numbers on content or cursor changes
@@ -104,47 +90,23 @@
     });
   }
 
-  // Measure how many visual lines each logical line takes when wrapped.
-  // Cached until text changes.
-  function _measureWraps() {
-    var text = _textarea.value;
-    if (text === _cachedText && _cachedWraps) return _cachedWraps;
-
-    // Set mirror width to match textarea's content area
-    var cs = getComputedStyle(_textarea);
-    var contentW = _textarea.clientWidth -
-      parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    _mirror.style.width = contentW + 'px';
-
-    // Measure single-line height if needed
-    if (!_singleLineH) {
-      _mirror.textContent = 'X';
-      _singleLineH = _mirror.offsetHeight;
+  function _getVisualLines() {
+    var IH = window.InputVim && window.InputVim.InputHandler;
+    if (IH && IH.getElementVisualLines) {
+      return IH.getElementVisualLines(_textarea);
     }
-
-    var lines = text.split('\n');
-    var wraps = [];
-
-    // Build all line divs at once, then measure (single reflow)
-    _mirror.innerHTML = '';
-    for (var i = 0; i < lines.length; i++) {
-      var div = document.createElement('div');
-      div.textContent = lines[i] || '\u00a0';
-      _mirror.appendChild(div);
-    }
-    var children = _mirror.children;
-    for (var j = 0; j < children.length; j++) {
-      wraps.push(Math.max(1, Math.round(children[j].offsetHeight / _singleLineH)));
-    }
-
-    _cachedText = text;
-    _cachedWraps = wraps;
-    return wraps;
+    return null;
   }
 
-  function _getCursorLine() {
-    var text = _textarea.value.substring(0, _textarea.selectionStart);
-    return text.split('\n').length;
+  function _getCursorVisualRow(vLines) {
+    var pos = _textarea.selectionStart;
+    // Search from the end — the last visual line whose start <= pos is the one
+    // the cursor is on. This avoids boundary ambiguity at wrap points where
+    // vLines[N].end === vLines[N+1].start.
+    for (var i = vLines.length - 1; i >= 0; i--) {
+      if (pos >= vLines[i].start) return i;
+    }
+    return 0;
   }
 
   function _updateLineNumbers() {
@@ -157,36 +119,28 @@
     }
     _gutter.style.display = '';
 
-    var wraps = _measureWraps();
-    var cursorLine = _getCursorLine();
-    var entries = [];
-    var maxWidth = 1;
+    var vLines = _getVisualLines();
+    if (!vLines || vLines.length === 0) return;
 
-    for (var i = 0; i < wraps.length; i++) {
-      var lineNum = i + 1;
+    var cursorVisRow = _getCursorVisualRow(vLines);
+    var maxWidth = String(vLines.length).length;
+
+    // Build a label for every visual line
+    var parts = [];
+    for (var i = 0; i < vLines.length; i++) {
       var label;
+      var isCurrent = i === cursorVisRow;
       if (_lineNumMode === 'relative') {
-        label = lineNum === cursorLine ? String(lineNum) : String(Math.abs(lineNum - cursorLine));
+        label = isCurrent ? String(i + 1) : String(Math.abs(i - cursorVisRow));
       } else {
-        label = String(lineNum);
+        label = String(i + 1);
       }
       if (label.length > maxWidth) maxWidth = label.length;
-      entries.push({ label: label, current: lineNum === cursorLine });
-      // Blank rows for wrapped visual lines
-      for (var w = 1; w < wraps[i]; w++) {
-        entries.push({ label: '', current: false });
-      }
-    }
-
-    // Render gutter
-    var parts = [];
-    for (var k = 0; k < entries.length; k++) {
-      var n = entries[k].label;
-      while (n.length < maxWidth) n = ' ' + n;
-      if (entries[k].current) {
-        parts.push('<span style="color:#d4d4d4;">' + n + '</span>');
+      while (label.length < maxWidth) label = ' ' + label;
+      if (isCurrent) {
+        parts.push('<span style="color:#d4d4d4;">' + label + '</span>');
       } else {
-        parts.push(n);
+        parts.push(label);
       }
     }
     _gutter.innerHTML = parts.join('\n');
@@ -205,9 +159,6 @@
     _sourceEl = sourceEl;
     _onSave = onSave;
     _originalText = text;
-    _cachedText = null;
-    _cachedWraps = null;
-    _singleLineH = 0;
 
     _textarea.value = text;
     _container.style.display = 'flex';

@@ -94,6 +94,8 @@
         _overlay.showCursor(rect.x, rect.y, rect.width, rect.height);
         if (!skipScroll) {
           var sc = _getScrollContainer(el);
+          var SB = window.InputVim.ScratchBuffer;
+          var _scratchOpen = SB && SB.isActive && SB.isActive();
           if (Settings.get('alwaysCentered')) {
             // Step 1: center within the scroll container (if any)
             if (sc) {
@@ -107,9 +109,9 @@
                 if (rect) _overlay.showCursor(rect.x, rect.y, rect.width, rect.height);
               }
             }
-            // Step 2: center on screen — if the container couldn't scroll
-            // enough (hit top/bottom), or there's no container, scroll the window
-            if (rect) {
+            // Step 2: center on screen — skip when scratch buffer is open
+            // (the overlay covers the full viewport, nothing behind it to scroll)
+            if (rect && !_scratchOpen) {
               var centerY = rect.y + rect.height / 2;
               var screenCenter = window.innerHeight / 2;
               var diff = centerY - screenCenter;
@@ -131,8 +133,8 @@
               }
               rect = handler.getCursorRect(el, visualPos);
             }
-            // Step 2: keep visible on screen
-            if (rect) {
+            // Step 2: keep visible on screen — skip when scratch buffer is open
+            if (rect && !_scratchOpen) {
               if (rect.y + rect.height > window.innerHeight) {
                 window.scrollBy(0, rect.y + rect.height - window.innerHeight + margin);
               } else if (rect.y < 0) {
