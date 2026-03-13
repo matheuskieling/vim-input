@@ -37,14 +37,16 @@ Browser inputs are painful for anyone used to Vim. Moving by word, deleting to e
 ## Features
 
 - **Four modes** &mdash; Normal, Insert, Visual, and Visual Line
-- **Full motion system** &mdash; word, line, find/till character, document start/end, and more
+- **Full motion system** &mdash; word, line, paragraph, find/till character, document start/end, and more
 - **Operators** &mdash; delete, change, yank &mdash; composable with any motion or text object
-- **Text objects** &mdash; `iw`, `aw`, `i(`, `a{`, `i"`, and more
+- **Text objects** &mdash; `iw`, `aw`, `i(`, `a{`, `i"`, `` i` ``, `ip`, and more
 - **Count prefixes** &mdash; `3w`, `5j`, `2dd` &mdash; repeat any motion or command
 - **Registers** &mdash; yank/paste with optional system clipboard sync
 - **Undo/Redo** &mdash; per-element undo stack independent of the browser
+- **Search** &mdash; `/`, `?`, `n`, `N`, `*`, `#` with wrap-around
+- **Auto/Smart indent** &mdash; configurable indentation on Enter, `o`, and `O` with brace-aware smart indent
 - **Visual overlay** &mdash; mode badge, block cursor, and pending command display via Shadow DOM
-- **Configurable** &mdash; start mode, bracket matching, tab size, yank highlight, scroll jump size, site exclusions, and more
+- **Configurable** &mdash; start mode, indent mode, bracket matching, tab size, yank highlight, scroll jump size, site exclusions, and more
 - **Works everywhere** &mdash; standard inputs, textareas, and contenteditable (rich text editors, GitHub PR descriptions, Notion, etc.)
 
 ---
@@ -63,7 +65,7 @@ Browser inputs are painful for anyone used to Vim. Moving by word, deleting to e
 
 ## How It Works
 
-Focus any text input, textarea, or contenteditable element on any page. You start in **Insert** mode &mdash; type normally. Press **Escape** to enter **Normal** mode, where single keys become Vim commands. Press **Escape** again in Normal mode to blur the input.
+Focus any text input, textarea, or contenteditable element on any page. You start in **Normal** mode by default (configurable). Press `i` to enter **Insert** mode and type normally. Press **Escape** to return to **Normal** mode. Press **Escape** again in Normal mode to blur the input.
 
 A small color-coded badge next to the input shows the current mode.
 
@@ -74,7 +76,7 @@ A small color-coded badge next to the input shows the current mode.
 | Mode | Badge | Description |
 |------|-------|-------------|
 | **Normal** | `-- NORMAL --` (blue) | Navigate and manipulate text. All keys are commands. |
-| **Insert** | `-- INSERT --` (green) | Type text normally. Only `Escape`, `Tab`, and bracket matching are intercepted. |
+| **Insert** | `-- INSERT --` (green) | Type text normally. `Escape`, `Tab`, `Enter` (indent), and bracket matching are intercepted. |
 | **Visual** | `-- VISUAL --` (orange) | Character-wise selection. Motions extend the selection. |
 | **Visual Line** | `-- V-LINE --` (orange) | Line-wise selection. Operates on full lines. |
 
@@ -120,9 +122,11 @@ All motions support count prefixes (e.g. `3w` moves 3 words forward).
 | `w` | Next word start |
 | `b` | Previous word start |
 | `e` | Next word end |
+| `ge` | Previous word end |
 | `W` | Next WORD start (whitespace-delimited) |
 | `B` | Previous WORD start |
 | `E` | Next WORD end |
+| `gE` | Previous WORD end |
 
 #### Find / Till
 
@@ -135,12 +139,21 @@ All motions support count prefixes (e.g. `3w` moves 3 words forward).
 | `;` | Repeat last `f`/`F`/`t`/`T` |
 | `,` | Repeat last `f`/`F`/`t`/`T` in reverse |
 
+#### Paragraph
+
+| Key | Motion |
+|-----|--------|
+| `{` | Jump to previous blank line |
+| `}` | Jump to next blank line |
+
 #### Search
 
 | Key | Motion |
 |-----|--------|
 | `/{term}` | Search forward for `{term}` (case insensitive) |
+| `?{term}` | Search backward for `{term}` (case insensitive) |
 | `*` | Search forward for the word under cursor (whole word) |
+| `#` | Search backward for the word under cursor (whole word) |
 | `n` | Jump to next search match |
 | `N` | Jump to previous search match |
 
@@ -185,6 +198,11 @@ Text objects select structured regions of text. Use with operators (`diw`, `ca"`
 | `i<` / `a<` | Inner / around angle brackets `<>` |
 | `i"` / `a"` | Inner / around double quotes |
 | `i'` / `a'` | Inner / around single quotes |
+| `` i` `` / `` a` `` | Inner / around backticks |
+| `ip` / `ap` | Inner / around paragraph (contiguous non-blank lines) |
+| `i*` / `a*` | Inner / around asterisks |
+| `i/` / `a/` | Inner / around forward slashes |
+| `i\|` / `a\|` | Inner / around pipes |
 
 ### Editing Commands
 
@@ -201,7 +219,33 @@ Text objects select structured regions of text. Use with operators (`diw`, `ca"`
 | `P` | Paste before cursor |
 | `u` | Undo |
 | `Ctrl+R` | Redo |
-| `Tab` | Insert spaces (configurable width, Insert mode) |
+
+### Insert Mode Features
+
+| Key | Action |
+|-----|--------|
+| `Tab` | Insert spaces (configurable width: 2, 4, or 8) |
+| `Enter` | Insert newline with automatic indentation (see Indent Mode setting) |
+
+In Normal mode, `Tab` and `Enter` pass through to the browser for native behavior (tab between inputs, submit forms, send messages).
+
+#### Indent Mode
+
+| Mode | Behavior |
+|------|----------|
+| **Off** | Plain newline, no indentation |
+| **Auto** | New line copies indentation from the current line |
+| **Smart** | Auto-indent + extra indent after `{`, split-braces when pressing Enter between `{}` |
+
+Smart indent applies to `Enter` in Insert mode and to `o` / `O` commands in Normal mode.
+
+#### Bracket Matching (when enabled)
+
+| Key | Action |
+|-----|--------|
+| `(`, `[`, `{` | Auto-insert matching closing bracket |
+| `"`, `'`, `` ` `` | Auto-insert matching quote |
+| `)`, `]`, `}` | Skip over closing bracket if already present |
 
 ### Visual Mode
 
@@ -237,13 +281,14 @@ Click the extension icon in the toolbar to open the settings popup.
 | Setting | Description | Default |
 |---------|-------------|---------|
 | **Enabled** | Toggle the extension on/off globally | On |
-| **Start in** | Mode when focusing an input (Insert or Normal) | Insert |
+| **Start in** | Mode when focusing an input (Insert or Normal) | Normal |
 | **Match brackets** | Auto-close `()`, `{}`, `[]` in Insert mode; skip over closing brackets | Off |
 | **Tab spaces** | Number of spaces inserted by `Tab` in Insert mode (2, 4, or 8) | 4 |
-| **System clipboard** | Sync yank/paste with the OS clipboard | Off |
-| **Highlight yank** | Flash highlight on yanked text | Off |
+| **Indent mode** | Indentation behavior on Enter / `o` / `O` (Off, Auto, or Smart) | Smart |
+| **System clipboard** | Sync yank/paste with the OS clipboard | On |
+| **Highlight yank** | Flash highlight on yanked text | On |
 | **Ctrl+D/U lines** | Number of lines to jump with `Ctrl+D` / `Ctrl+U` | 20 |
-| **Always centered** | Keep the cursor vertically centered in the viewport | Off |
+| **Always centered** | Keep the cursor vertically centered in the viewport | On |
 | **Excluded sites** | URL patterns where the extension is disabled | None |
 
 Settings sync across Chrome devices via `chrome.storage.sync`.
@@ -278,33 +323,36 @@ On sites where Chrome's native UI swallows the Escape key (Google Search autocom
 
 ```
  NORMAL MODE
- ┌──────────────────────────────────────────────────────┐
- │  Movement    h j k l    w b e    W B E    0 ^ $      │
- │  Find/Till   f F t T    ; ,                          │
- │  Search      /{term}    *    n N                     │
- │  Document    gg G    Ctrl+D  Ctrl+U                  │
- │                                                      │
- │  Operators   d c y    (compose with motions)         │
- │  Line ops    dd cc yy                                │
- │  Text objs   iw aw    i( a{    i" a'    i[ a<        │
- │                                                      │
- │  Edit        x X s    r{c}    D C Y    p P           │
- │  Undo/Redo   u    Ctrl+R                             │
- │                                                      │
- │  Mode        i a I A o O    v V    Escape    :q      │
- └──────────────────────────────────────────────────────┘
+ ┌──────────────────────────────────────────────────────────┐
+ │  Movement    h j k l    w b e ge    W B E gE    0 ^ $    │
+ │  Paragraph   { }                                         │
+ │  Find/Till   f F t T    ; ,                              │
+ │  Search      /{term}  ?{term}    * #    n N              │
+ │  Document    gg G    Ctrl+D  Ctrl+U                      │
+ │                                                          │
+ │  Operators   d c y    (compose with motions)             │
+ │  Line ops    dd cc yy                                    │
+ │  Text objs   iw aw   i( a{   i" a'   i` a`   ip ap       │
+ │                                                          │
+ │  Edit        x X s    r{c}    D C Y    p P               │
+ │  Undo/Redo   u    Ctrl+R                                 │
+ │                                                          │
+ │  Mode        i a I A o O    v V    Escape    :q          │
+ └──────────────────────────────────────────────────────────┘
 
  INSERT MODE
- ┌──────────────────────────────────────────────────────┐
- │  Type normally. Only Escape, Tab, and bracket        │
- │  matching are intercepted.                           │
- └──────────────────────────────────────────────────────┘
+ ┌──────────────────────────────────────────────────────────┐
+ │  Type normally. Intercepted keys:                        │
+ │  Escape    Tab (insert spaces)    Enter (auto-indent)    │
+ │  Bracket matching (when enabled): () [] {} "" '' ``      │
+ └──────────────────────────────────────────────────────────┘
 
  VISUAL / VISUAL LINE MODE
- ┌──────────────────────────────────────────────────────┐
- │  Motions extend selection. Apply operators:          │
- │  d x    y    c s    or use text objects: iw i(       │
- └──────────────────────────────────────────────────────┘
+ ┌──────────────────────────────────────────────────────────┐
+ │  Motions extend selection. Apply operators:              │
+ │  d x    y    c s    or use text objects: iw i( ip        │
+ │  o = swap anchor/head    v/V = switch visual mode        │
+ └──────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -332,14 +380,22 @@ content/
 ├── key-parser.js                   # State machine: keystrokes → command objects
 ├── vim-engine.js                   # Mode management and operator dispatch
 ├── overlay.js                      # Shadow DOM overlay: mode badge, block cursor
+├── shared/
+│   ├── text-utils.js               # Pure text functions: word motions, line helpers, indent
+│   └── motion-resolver.js          # Single source of truth for motion/text object resolution
 ├── handlers/
 │   ├── input-handler.js            # Vim operations for <input> and <textarea>
 │   └── contenteditable-handler.js  # Vim operations for contenteditable elements
-└── main.js                         # Orchestrator: focus tracking, events, settings
+├── settings-manager.js             # Settings with chrome.storage.sync
+├── element-detector.js             # Element type detection and handler routing
+├── cursor-controller.js            # Block cursor positioning and scroll-into-view
+├── focus-manager.js                # Focus/blur lifecycle and focus-steal detection
+├── event-interceptor.js            # Keydown capture, insert-mode helpers (tab, indent, brackets)
+└── main.js                         # Slim orchestrator wiring all modules together
 
 popup/                              # Settings UI
 background/
-└── service-worker.js               # Settings broadcast to all tabs
+└── service-worker.js               # Minimal stub
 ```
 
 ---
