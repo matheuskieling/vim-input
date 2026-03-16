@@ -5,6 +5,7 @@
 
   var _activeElement = null;
   var _recentFocusSteal = 0;
+  var _deactivating = false;
   var _engine = null;
   var _overlay = null;
   var _getHandler = null;
@@ -32,23 +33,49 @@
       var el = e.composedPath ? e.composedPath()[0] : e.target;
       if (el !== _activeElement) return;
 
-      if (_engine.mode !== Mode.NORMAL && Date.now() - _recentFocusSteal > 300) {
-        var el = _activeElement;
-        var handler = _getHandler(el);
+      // deactivate() sets _deactivating before blurring — let that through
+      if (_deactivating) return;
+
+      var EI = window.InputVim.EventInterceptor;
+      var hadSearchOrCmd = EI.isSearchOrCmdActive();
+
+      // Always clear all transient state (search, cmdline, pending parser cmd)
+      EI.clearTransientState();
+      _engine.parser.reset();
+      _overlay.updateCmd('');
+
+      // Search/cmdline takes priority — only clear, don't switch mode
+      if (hadSearchOrCmd) {
+        // stay in current mode
+      }
+      // Otherwise, switch non-NORMAL modes to NORMAL (pending cmd already cleared above)
+      else if (_engine.mode !== Mode.NORMAL && Date.now() - _recentFocusSteal > 300) {
+        var activeEl = _activeElement;
+        var handler = _getHandler(activeEl);
         if (handler) {
           var command = _engine.handleKey('Escape');
-          if (command) handler.execute(el, command, _engine);
+          if (command) handler.execute(activeEl, command, _engine);
           _updateCursor();
         }
-        setTimeout(function () {
-          if (el && document.activeElement !== el) {
-            el.focus();
-          }
-        }, 0);
+      }
+
+      // User-initiated blur (Tab, Enter, click) — deactivate normally
+      if (Date.now() - _recentFocusSteal <= 300) {
+        deactivate();
         return;
       }
 
-      deactivate();
+      // Re-focus unless the user clicked on another vim-target (let focusin handle it)
+      var refocusEl = _activeElement;
+      setTimeout(function () {
+        if (!refocusEl || refocusEl !== _activeElement) return;
+        var ED = window.InputVim.ElementDetector;
+        var newFocus = document.activeElement;
+        if (newFocus && newFocus !== refocusEl && ED.isVimTarget(newFocus)) return;
+        if (document.activeElement !== refocusEl) {
+          refocusEl.focus();
+        }
+      }, 0);
     }, true);
   }
 
@@ -74,21 +101,28 @@
   }
 
   function deactivate() {
-    if (_activeElement) {
-      _activeElement.style.caretColor = '';
-      _activeElement.removeAttribute('data-input-vim');
+    var el = _activeElement;
+    if (el) {
+      el.style.caretColor = '';
+      el.removeAttribute('data-input-vim');
       // Restore original email type if it was swapped
-      var origType = _activeElement.getAttribute('data-input-vim-original-type');
+      var origType = el.getAttribute('data-input-vim-original-type');
       if (origType) {
-        _activeElement.type = origType;
-        _activeElement.removeAttribute('data-input-vim-original-type');
+        el.type = origType;
+        el.removeAttribute('data-input-vim-original-type');
       }
     }
     _overlay.hideCursor();
     _activeElement = null;
     _engine.setMode(Mode.NORMAL);
     _engine.parser.reset();
+    window.InputVim.EventInterceptor.clearTransientState();
     _overlay.hide();
+    // Blur after removing data-input-vim so the page-escape-blocker allows it.
+    // _deactivating flag tells the focusout handler not to re-focus.
+    _deactivating = true;
+    if (el) el.blur();
+    _deactivating = false;
   }
 
   function getActiveElement() {

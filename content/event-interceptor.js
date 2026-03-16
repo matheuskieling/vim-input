@@ -34,7 +34,11 @@
     window.addEventListener('keypress', blockIfBlocked, true);
     document.addEventListener('keypress', blockIfBlocked, true);
     window.addEventListener('keyup', function (e) {
-      if (_blocked) { killEvent(e); _blocked = false; }
+      if (_blocked) { killEvent(e); _blocked = false; return; }
+      // Escape fallback: if keydown was swallowed by the page, handle Escape on keyup
+      if (e.key === 'Escape') {
+        handleEscapeFallback(e);
+      }
     }, true);
     document.addEventListener('keyup', function (e) {
       if (_blocked) killEvent(e);
@@ -471,12 +475,46 @@
       return;
     }
 
-    if (cmd === 'q') {
+    if (cmd === 'q' || cmd === 'q!' || cmd === 'wq') {
       window.InputVim.FocusManager.deactivate();
     }
   }
 
+  // ── Escape fallback (keyup) ─────────────────────────
+  // Some sites (e.g. GitHub) swallow Escape on keydown via stopImmediatePropagation,
+  // so our keydown handler never fires. This keyup fallback handles Escape in that case.
+
+  function handleEscapeFallback(e) {
+    var el = _getActiveElement();
+    if (!el) return;
+
+    // 1. Clear transient state (search, cmdline, pending cmd)
+    if (_searchActive || _cmdLineActive || _engine.parser.getPending().length > 0) {
+      killEvent(e);
+      clearTransientState();
+      _engine.parser.reset();
+      _overlay.updateCmd('');
+      return;
+    }
+
+    // 2. Exit visual/insert → normal
+    if (_engine.mode !== Mode.NORMAL) {
+      killEvent(e);
+      var handler = _getHandler(el);
+      var command = _engine.handleKey('Escape');
+      if (command && handler) handler.execute(el, command, _engine);
+      _updateCursor();
+      return;
+    }
+
+    // 3. Normal mode, nothing to cancel → do nothing (no blur)
+  }
+
   // ── Keydown handler ─────────────────────────────────
+
+  function hasTransientState() {
+    return _searchActive || _cmdLineActive || _engine.parser.getPending().length > 0;
+  }
 
   function handleKeydown(e) {
     _blocked = false;
@@ -744,10 +782,12 @@
       return;
     }
 
-    // '/' and '?' activate search mode
+    // '/' and '?' activate search mode (clears pending command first)
     if (key === '/' || key === '?') {
       _blocked = true;
       killEvent(e);
+      _engine.parser.reset();
+      _overlay.updateCmd('');
       _searchActive = true;
       _searchText = '';
       _searchDirection = key;
@@ -760,6 +800,16 @@
     // WARNING: Removing this will cause Tab/Enter to be swallowed in normal/visual modes
     if (key === 'Tab' || key === 'Enter') {
       _markFocusSteal();
+      return;
+    }
+
+    // Escape: check transient state again (safety net in case the early check didn't catch it)
+    if (key === 'Escape' && hasTransientState()) {
+      _blocked = true;
+      killEvent(e);
+      clearTransientState();
+      _engine.parser.reset();
+      _overlay.updateCmd('');
       return;
     }
 
@@ -792,7 +842,7 @@
     }
 
     // Paste: sync from clipboard first (async)
-    if (command.type === CommandType.PASTE || command.type === CommandType.PASTE_BEFORE) {
+    if (command.type === CommandType.PASTE || command.type === CommandType.PASTE_BEFORE || command.type === CommandType.VISUAL_PASTE) {
       var pasteEl = el;
       var pasteHandler = handler;
       var Register = window.InputVim.Register;
@@ -813,10 +863,31 @@
         _updateCursor();
       });
     }
+
+  }
+
+  function clearTransientState() {
+    if (_searchActive) {
+      _searchActive = false;
+      _searchText = '';
+      _overlay.hideCmdLine();
+    }
+    if (_cmdLineActive) {
+      _cmdLineActive = false;
+      _cmdLineText = '';
+      _overlay.hideCmdLine();
+    }
   }
 
   window.InputVim = window.InputVim || {};
+  function isSearchOrCmdActive() {
+    return _searchActive || _cmdLineActive;
+  }
+
   window.InputVim.EventInterceptor = {
     init: init,
+    clearTransientState: clearTransientState,
+    hasTransientState: hasTransientState,
+    isSearchOrCmdActive: isSearchOrCmdActive,
   };
 })();

@@ -571,6 +571,9 @@
       case CommandType.PASTE_BEFORE:
         this._doPaste(el, text, pos, true);
         break;
+      case CommandType.VISUAL_PASTE:
+        this._doVisualPaste(el, command, engine);
+        break;
       case CommandType.UNDO:
         this._doUndo(el, command.count);
         break;
@@ -1141,6 +1144,76 @@
       insertPos = TU.clamp(insertPos, 0, text.length);
       insertTextAt(el, insertPos, reg.content);
       setCursorAt(el, insertPos + reg.content.length - 1);
+    }
+
+    TU.fireInputEvent(el);
+  };
+
+  ContentEditableHandler.prototype._doVisualPaste = function (el, command, engine) {
+    var reg = Register.get();
+    if (!reg.content) return;
+
+    this._saveUndo(el);
+
+    var text = getFlatText(el);
+
+    if (command.lineWise && engine) {
+      var vLines = computeCEVisualLines(el, text);
+      var anchor = engine.visualAnchor;
+      var head = engine.visualHead;
+      var anchorVi = TU.findVisualLine(vLines, anchor);
+      var headVi = TU.findVisualLine(vLines, head);
+      var startVi = Math.min(anchorVi, headVi);
+      var endVi = Math.max(anchorVi, headVi);
+      var from = vLines[startVi].start;
+      var to = vLines[endVi].end;
+
+      if (to < text.length && text[to] === '\n') to++;
+      else if (to >= text.length && from > 0 && text[from - 1] === '\n') from--;
+
+      var selected = text.substring(from, to);
+      var pasteContent = reg.content;
+
+      // Store deleted selection in register (Vim behavior)
+      Register.set(selected, 'line');
+
+      var content = pasteContent;
+      if (content[content.length - 1] === '\n') content = content.substring(0, content.length - 1);
+
+      // Select range then insert in one operation so framework editor undo reverses the whole thing
+      setSelectionRange(el, from, to);
+      if (_isFrameworkEditor(el)) {
+        _bridgeExec(el, 'insertText', { text: content });
+      } else if (!_execCmd('insertText', content)) {
+        deleteRange(el, from, to);
+        insertTextAt(el, from, content);
+      }
+      setCursorAt(el, from);
+    } else {
+      // Char-wise visual paste
+      var sel = window.getSelection();
+      if (!sel.rangeCount) return;
+      var selected = sel.toString();
+      var selRange = sel.getRangeAt(0);
+      var from = _flatOffsetAt(el, selRange.startContainer, selRange.startOffset);
+      var pasteContent = reg.content;
+
+      // Store deleted selection in register (Vim behavior)
+      Register.set(selected, 'char');
+
+      var content = pasteContent;
+      if (reg.type === 'line' && content[content.length - 1] === '\n') {
+        content = content.substring(0, content.length - 1);
+      }
+
+      // Insert with selection active so it replaces atomically (single undo step)
+      if (_isFrameworkEditor(el)) {
+        _bridgeExec(el, 'insertText', { text: content });
+      } else if (!_execCmd('insertText', content)) {
+        sel.getRangeAt(0).deleteContents();
+        insertTextAt(el, from, content);
+      }
+      setCursorAt(el, from + content.length - 1);
     }
 
     TU.fireInputEvent(el);

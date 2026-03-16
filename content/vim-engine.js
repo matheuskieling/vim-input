@@ -86,6 +86,14 @@
         return opCmd;
       }
 
+      // Paste replaces the visual selection
+      if (key === 'p' || key === 'P') {
+        this.parser.reset();
+        var pasteCmd = { type: CommandType.VISUAL_PASTE, lineWise: this.mode === Mode.VISUAL_LINE };
+        this.setMode(Mode.NORMAL);
+        return pasteCmd;
+      }
+
       // 'o' swaps cursor between anchor and head
       if (key === 'o') {
         var tmp = this.visualAnchor;

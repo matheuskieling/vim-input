@@ -15,8 +15,10 @@
   var origBlur = HTMLElement.prototype.blur;
 
   HTMLElement.prototype.blur = function () {
+    // Block all programmatic blur() while vim is active on this element.
+    // Focus out is only possible via :q / :q! which calls deactivate() directly.
     var mode = this.getAttribute('data-input-vim');
-    if (mode && mode !== 'NORMAL') {
+    if (mode) {
       return;
     }
     return origBlur.apply(this, arguments);

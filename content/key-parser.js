@@ -10,6 +10,7 @@
   var TEXT_OBJ_KEYS = {
     w: TextObject.WORD, W: TextObject.WORD_BIG,
     p: TextObject.PARAGRAPH,
+    e: TextObject.ENTIRE,
     '{': TextObject.BRACE, '}': TextObject.BRACE,
     '(': TextObject.PAREN, ')': TextObject.PAREN,
     '[': TextObject.BRACKET, ']': TextObject.BRACKET,

@@ -56,6 +56,7 @@
     BACKTICK: 'backtick',
     CHAR_PAIR: 'char_pair',
     PARAGRAPH: 'paragraph',
+    ENTIRE: 'entire',
   });
 
   const CommandType = Object.freeze({
@@ -78,6 +79,7 @@
     REPLACE_CHAR: 'replace_char',
     DELETE_CHAR: 'delete_char',
     VISUAL_SWAP: 'visual_swap',
+    VISUAL_PASTE: 'visual_paste',
   });
 
   const InsertEntry = Object.freeze({

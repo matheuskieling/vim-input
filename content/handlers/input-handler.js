@@ -200,6 +200,9 @@
       case CommandType.PASTE_BEFORE:
         this._doPaste(el, true);
         break;
+      case CommandType.VISUAL_PASTE:
+        this._doVisualPaste(el, command, engine);
+        break;
       case CommandType.UNDO:
         this._doUndo(el, command.count);
         break;
@@ -738,6 +741,59 @@
       insertPos = TU.clamp(insertPos, 0, text.length);
       el.value = text.substring(0, insertPos) + reg.content + text.substring(insertPos);
       setCursor(el, insertPos + reg.content.length - 1);
+    }
+
+    TU.fireInputEvent(el);
+  };
+
+  // ── Visual Paste ────────────────────────────────────
+
+  InputHandler.prototype._doVisualPaste = function (el, command, engine) {
+    var reg = Register.get();
+    if (!reg.content) return;
+
+    var text = el.value;
+    var start = el.selectionStart;
+    var end = el.selectionEnd;
+
+    // Collapse selection before saving undo so undo restores a cursor, not a selection
+    setCursor(el, start);
+    this._saveUndo(el);
+    el.selectionStart = start;
+    el.selectionEnd = end;
+
+    if (command.lineWise) {
+      var vLines = getElementVisualLines(el);
+      if (vLines && engine) {
+        var anchor = engine.visualAnchor;
+        var head = engine.visualHead;
+        var anchorVi = TU.findVisualLine(vLines, anchor);
+        var headVi = TU.findVisualLine(vLines, head);
+        var startVi = Math.min(anchorVi, headVi);
+        var endVi = Math.max(anchorVi, headVi);
+        start = vLines[startVi].start;
+        end = vLines[endVi].end;
+        if (end < text.length && text[end] === '\n') end++;
+        else if (end >= text.length && start > 0 && text[start - 1] === '\n') start--;
+      }
+    }
+
+    var selected = text.substring(start, end);
+    var pasteContent = reg.content;
+
+    // Store deleted selection in register (Vim behavior: replaced text goes to unnamed register)
+    Register.set(selected, command.lineWise ? 'line' : 'char');
+
+    // Replace selection with paste content
+    if (reg.type === 'line') {
+      var content = pasteContent;
+      if (content[content.length - 1] !== '\n' && !command.lineWise) content += '\n';
+      if (command.lineWise && content[content.length - 1] === '\n') content = content.substring(0, content.length - 1);
+      el.value = text.substring(0, start) + content + text.substring(end);
+      setCursor(el, start);
+    } else {
+      el.value = text.substring(0, start) + pasteContent + text.substring(end);
+      setCursor(el, start + pasteContent.length - 1);
     }
 
     TU.fireInputEvent(el);

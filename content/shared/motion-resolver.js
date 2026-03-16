@@ -81,6 +81,10 @@
       return resolveParagraphTextObject(text, pos, around);
     }
 
+    if (object === TextObject.ENTIRE) {
+      return resolveEntireTextObject(text, around);
+    }
+
     // Quote-like text objects (find matching pair of same char on line)
     var QUOTE_CHARS = {};
     QUOTE_CHARS[TextObject.DOUBLE_QUOTE] = '"';
@@ -151,6 +155,25 @@
     }
 
     if (from === to) return null;
+    return { from: from, to: to };
+  }
+
+  function resolveEntireTextObject(text, around) {
+    if (text.length === 0) return null;
+    if (around) {
+      // ae: entire buffer
+      return { from: 0, to: text.length };
+    }
+    // ie: entire buffer excluding leading/trailing blank lines
+    var from = 0;
+    var to = text.length;
+    while (from < to && /^\s*$/.test(getLineText(text, from))) from = lineEndExcl(text, from);
+    while (to > from) {
+      var prevLineStart = lineStart(text, Math.max(to - 1, 0));
+      if (!/^\s*$/.test(getLineText(text, prevLineStart))) break;
+      to = prevLineStart;
+    }
+    if (from >= to) return null;
     return { from: from, to: to };
   }
 
