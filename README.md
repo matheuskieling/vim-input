@@ -361,7 +361,7 @@ You can exclude the current site with one click, manage exclusions as a list, or
 |---------|---------|-------|
 | `<input type="text">` | Full | Also `search`, `url`, `tel`, `password`, `email` |
 | `<textarea>` | Full | Multiline with visual line wrapping |
-| `contenteditable` | Partial | GitHub, Notion, rich text editors &mdash; works but some framework editors (CKEditor, ProseMirror) may have quirks with undo, paste, or line operations |
+| `contenteditable` | Partial | GitHub, Notion, rich text editors &mdash; may misbehave or have strange behavior depending on the site's implementation. Use the scratch buffer (`:e`) as a workaround |
 | `<input type="number">` | Not supported | Chrome restricts selection API access |
 
 On sites where Chrome's native UI swallows the Escape key (Google Search autocomplete, GitHub), the extension detects the resulting focus loss and treats it as an Escape press. The input is automatically re-focused so you stay in the editor.
