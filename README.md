@@ -65,13 +65,24 @@ Browser inputs are painful for anyone used to Vim. Moving by word, deleting to e
 
 ## How It Works
 
-Focus any text input, textarea, or contenteditable element on any page. You start in **Normal** mode by default (configurable). Press `i` to enter **Insert** mode and type normally. Press **Escape** to return to **Normal** mode. Press **Escape** again in Normal mode to blur the input.
+Focus any text input, textarea, or contenteditable element on any page. You start in **Normal** mode by default (configurable). Press `i` to enter **Insert** mode and type normally. Press **Escape** to return to **Normal** mode.
 
 A small color-coded badge next to the input shows the current mode.
 
-### Disabling Vim on an input (`:q`)
+### Escape behavior
 
-If you want to type normally without Vim intercepting your keys, type `:q` in Normal mode. This **disables Vim on the current input** and gives you back standard browser editing &mdash; no mode badge, no key interception, just a regular text field. Vim will reactivate automatically the next time you focus that input.
+Escape is **layered** &mdash; it always handles the most specific active state first:
+
+1. **Search or command-line active** (`/`, `?`, `:`) &rarr; closes the search/command-line, stays in the current mode
+2. **Pending command** (e.g. you typed `d` or `32`) &rarr; cancels the pending command. If in Visual/Insert mode, also switches back to Normal
+3. **Visual / Insert mode, nothing pending** &rarr; switches to Normal mode
+4. **Normal mode, nothing pending** &rarr; no-op (Escape does not blur the input)
+
+Pressing `/` or `?` while a command is pending (e.g. `32/`) cancels the pending command and opens search.
+
+### Leaving an input (`:q`)
+
+**Escape never blurs the input.** To leave, type `:q`, `:q!`, or `:wq` in Normal mode. This disables Vim on the current input and gives you back standard browser editing. Vim reactivates automatically the next time you focus that input. `Tab` and `Enter` also pass through to the browser in Normal mode for native navigation.
 
 ---
 
@@ -92,7 +103,7 @@ If you want to type normally without Vim intercepting your keys, type `:q` in No
 
 | Key | Action |
 |-----|--------|
-| `Escape` | Insert &rarr; Normal &rarr; blur |
+| `Escape` | Layered: clear search/cmdline &rarr; clear pending command + exit Visual/Insert &rarr; no-op in Normal |
 | `i` | Insert before cursor |
 | `a` | Insert after cursor |
 | `I` | Insert at start of line |
@@ -101,7 +112,9 @@ If you want to type normally without Vim intercepting your keys, type `:q` in No
 | `O` | Open new line above and enter Insert |
 | `v` | Enter Visual mode (toggle) |
 | `V` | Enter Visual Line mode (toggle) |
-| `:q` | Disable Vim on the current input &mdash; returns to normal browser editing. Vim reactivates when you refocus the input |
+| `:q` | Blur the input and disable Vim. Vim reactivates when you refocus the input |
+| `:q!` | Same as `:q` |
+| `:wq` | Same as `:q` (no file to save, just exits) |
 | `:e` | Open scratch buffer (see below) |
 
 ### Motions
@@ -205,6 +218,7 @@ Text objects select structured regions of text. Use with operators (`diw`, `ca"`
 | `i'` / `a'` | Inner / around single quotes |
 | `` i` `` / `` a` `` | Inner / around backticks |
 | `ip` / `ap` | Inner / around paragraph (contiguous non-blank lines) |
+| `ie` / `ae` | Inner / around entire buffer (`ie` excludes leading/trailing blank lines) |
 | `i*` / `a*` | Inner / around asterisks |
 | `i/` / `a/` | Inner / around forward slashes |
 | `i\|` / `a\|` | Inner / around pipes |
@@ -289,6 +303,7 @@ In Visual or Visual Line mode, motions extend the selection. Text objects set th
 | `d` / `x` | Delete selection |
 | `y` | Yank selection |
 | `c` / `s` | Change selection (delete + enter Insert) |
+| `p` / `P` | Replace selection with register contents (replaced text goes to register) |
 | `o` | Swap cursor to other end of selection |
 
 You can switch between Visual and Visual Line with `v` / `V`, or press the same key again to exit.
@@ -349,46 +364,43 @@ You can exclude the current site with one click, manage exclusions as a list, or
 | `contenteditable` | Full | GitHub, Notion, rich text editors, etc. |
 | `<input type="number">` | Not supported | Chrome restricts selection API access |
 
-On sites where Chrome's native UI swallows the Escape key (Google Search autocomplete, GitHub), the extension detects the resulting focus loss and treats it as an Escape press.
+On sites where Chrome's native UI swallows the Escape key (Google Search autocomplete, GitHub), the extension detects the resulting focus loss and treats it as an Escape press. The input is automatically re-focused so you stay in the editor.
 
 ---
 
 ## Quick Reference
 
-```
- NORMAL MODE
- ┌──────────────────────────────────────────────────────────┐
- │  Movement    h j k l    w b e ge    W B E gE    0 ^ $    │
- │  Paragraph   { }                                         │
- │  Find/Till   f F t T    ; ,                              │
- │  Search      /{term}  ?{term}    * #    n N              │
- │  Document    gg G    Ctrl+D  Ctrl+U                      │
- │                                                          │
- │  Operators   d c y    (compose with motions)             │
- │  Line ops    dd cc yy                                    │
- │  Text objs   iw aw   i( a{   i" a'   i` a`   ip ap       │
- │                                                          │
- │  Edit        x X s    r{c}    D C Y    p P               │
- │  Undo/Redo   u    Ctrl+R                                 │
- │                                                          │
- │  Mode        i a I A o O    v V    Escape    :q          │
- │  Scratch     :e (open)   :wq (save+close)   :q! (discard)│
- └──────────────────────────────────────────────────────────┘
+### Normal Mode
 
- INSERT MODE
- ┌──────────────────────────────────────────────────────────┐
- │  Type normally. Intercepted keys:                        │
- │  Escape    Tab (insert spaces)    Enter (auto-indent)    │
- │  Bracket matching (when enabled): () [] {} "" '' ``      │
- └──────────────────────────────────────────────────────────┘
+**Movement** &mdash; `h` `j` `k` `l` `w` `b` `e` `ge` `W` `B` `E` `gE` `0` `^` `$` `{` `}`
 
- VISUAL / VISUAL LINE MODE
- ┌──────────────────────────────────────────────────────────┐
- │  Motions extend selection. Apply operators:              │
- │  d x    y    c s    or use text objects: iw i( ip        │
- │  o = swap anchor/head    v/V = switch visual mode        │
- └──────────────────────────────────────────────────────────┘
-```
+**Find/Till** &mdash; `f{c}` `F{c}` `t{c}` `T{c}` `;` `,`
+
+**Search** &mdash; `/{term}` `?{term}` `*` `#` `n` `N`
+
+**Document** &mdash; `gg` `G` `Ctrl+D` `Ctrl+U`
+
+**Operators** &mdash; `d` `c` `y` (compose with motions or text objects)
+
+**Line ops** &mdash; `dd` `cc` `yy`
+
+**Text objects** &mdash; `iw` `aw` `i(` `a{` `i"` `a'` `` i` `` `ip` `ap` `ie` `ae`
+
+**Edit** &mdash; `x` `X` `s` `r{c}` `D` `C` `Y` `p` `P` `u` `Ctrl+R`
+
+**Mode** &mdash; `i` `a` `I` `A` `o` `O` `v` `V` `Escape`
+
+**Exit** &mdash; `:q` `:q!` `:wq` (blur input) &middot; **Scratch** &mdash; `:e` (open) `:wq` (save+close) `:q!` (discard)
+
+### Insert Mode
+
+Type normally. Intercepted keys: `Escape` `Tab` (spaces) `Enter` (auto-indent). Bracket matching when enabled: `()` `[]` `{}` `""` `''` ` `` `
+
+### Visual / Visual Line Mode
+
+Motions extend selection. Operators: `d` `x` `y` `c` `s` `p` `P` (replace). Text objects work too.
+
+`o` = swap anchor/head &middot; `v` / `V` = switch visual mode
 
 ---
 
