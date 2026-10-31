@@ -221,6 +221,9 @@
       case CommandType.DELETE_CHAR:
         this._doDeleteChar(el, command);
         break;
+      case CommandType.DELETE_WORD_BACK:
+        this._doDeleteWordBack(el, command);
+        break;
       case CommandType.ESCAPE:
         this._doEscape(el, command);
         break;
@@ -870,6 +873,30 @@
     var newInfo = TU.getLineInfo(el.value, Math.min(pos, el.value.length));
     var maxPos = newInfo.lineEnd > newInfo.lineStart ? newInfo.lineEnd - 1 : newInfo.lineStart;
     setCursor(el, Math.min(pos, maxPos));
+    TU.fireInputEvent(el);
+  };
+
+  // ── Insert-mode word delete (i_CTRL-W) ──────────────
+
+  // FIX: i_CTRL-W support for hosts that deliver Ctrl+W to the page
+  // (PWAs, Electron). Chrome itself reserves the shortcut and cannot be
+  // overridden, so the key never reaches us there.
+  // WHY: Vim users expect insert-mode word delete to work like in the editor.
+  // WARNING: Deliberately does NOT touch the register — Vim sends this text to
+  // the small-delete register, and writing it here would clobber a yank.
+  InputHandler.prototype._doDeleteWordBack = function (el, command) {
+    var text = el.value;
+    var pos = el.selectionStart;
+    var count = command.count || 1;
+    var start = pos;
+    for (var i = 0; i < count && start > 0; i++) {
+      start = TU.wordDeleteStart(text, start);
+    }
+    if (start === pos && pos === el.selectionEnd) return;
+
+    this._saveUndo(el);
+    el.value = text.substring(0, start) + text.substring(el.selectionEnd);
+    setCursor(el, start);
     TU.fireInputEvent(el);
   };
 

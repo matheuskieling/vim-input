@@ -18,6 +18,25 @@
     return val < min ? min : val > max ? max : val;
   }
 
+  // ── Insert-mode word delete (i_CTRL-W) ─────────────
+
+  /**
+   * Start offset of the text removed by i_CTRL-W at `pos`.
+   *
+   * Skips the whitespace immediately before the cursor and then the word
+   * itself, so a second Ctrl-W on a whitespace token removes the word before
+   * it. A cursor sitting at the start of a line joins it with the previous line,
+   * matching Vim.
+   */
+  function wordDeleteStart(text, pos) {
+    if (pos <= 0) return 0;
+    var i = pos;
+    while (i > 0 && text[i - 1] !== '\n' && /\s/.test(text[i - 1])) i--;
+    while (i > 0 && text[i - 1] !== '\n' && !/\s/.test(text[i - 1])) i--;
+    if (i === pos && text[pos - 1] === '\n') i = pos - 1;
+    return i;
+  }
+
   // ── Word motion helpers ─────────────────────────────
 
   function wordForward(text, pos) {
@@ -199,6 +218,7 @@
     wordEndBig: wordEndBig,
     wordEndBack: wordEndBack,
     wordEndBackBig: wordEndBackBig,
+    wordDeleteStart: wordDeleteStart,
     getLineInfo: getLineInfo,
     getLineNumber: getLineNumber,
     getLineStartOffset: getLineStartOffset,

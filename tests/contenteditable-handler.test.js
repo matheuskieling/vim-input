@@ -694,3 +694,26 @@ describe('combined operations', () => {
     expect(getText(el)).toBe('abc def ghi');
   });
 });
+
+// =========================================================================
+// Insert-mode word delete (i_CTRL-W)
+// =========================================================================
+describe('delete word backward', () => {
+  test('deletes the word before the cursor', () => {
+    el = makeCE('foo bar', 7);
+    handler.execute(el, { type: CT.DELETE_WORD_BACK, count: 1 }, engine);
+    expect(el.textContent).toBe('foo ');
+  });
+
+  test('count deletes several words', () => {
+    el = makeCE('one two three', 13);
+    handler.execute(el, { type: CT.DELETE_WORD_BACK, count: 2 }, engine);
+    expect(el.textContent).toBe('one ');
+  });
+
+  test('is a no-op at the start of the buffer', () => {
+    el = makeCE('foo', 0);
+    handler.execute(el, { type: CT.DELETE_WORD_BACK, count: 1 }, engine);
+    expect(el.textContent).toBe('foo');
+  });
+});

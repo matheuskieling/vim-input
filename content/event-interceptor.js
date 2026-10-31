@@ -658,6 +658,20 @@
       return;
     }
 
+    // Ctrl+W in insert mode deletes the word before the cursor (i_CTRL-W).
+    // WHY: Chrome reserves Ctrl+W for closing the tab and preventDefault()
+    //   cannot override it there, but PWAs and Electron hosts do deliver the
+    //   key to the page, where Vim users expect insert-mode word delete.
+    // WARNING: Only intercept in insert mode — normal mode Ctrl+W belongs to
+    //   the host window, not to the editor.
+    if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey &&
+        (e.key === 'w' || e.key === 'W') && _engine.mode === Mode.INSERT) {
+      _blocked = true;
+      killEvent(e);
+      handler.execute(el, { type: CommandType.DELETE_WORD_BACK, count: 1 }, _engine);
+      return;
+    }
+
     // Ignore modifier combos
     if (e.ctrlKey || e.metaKey || e.altKey) {
       _markFocusSteal();
