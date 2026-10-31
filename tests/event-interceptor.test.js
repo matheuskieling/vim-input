@@ -25,6 +25,7 @@ afterAll(() => {
 // =========================================================================
 describe('literal char arguments are not mode triggers', () => {
   test('F/ uses "/" as the target instead of starting a search', () => {
+    h.reset('ab/cd', 4);
     h.press('F');
     h.press('/');
     expect(h.overlay.showCmdLine).not.toHaveBeenCalled();
@@ -35,6 +36,7 @@ describe('literal char arguments are not mode triggers', () => {
   });
 
   test('cF/ changes back to "/" instead of dropping the operator', () => {
+    h.reset('ab/cd', 3);
     h.press('c');
     h.press('F');
     h.press('/');
@@ -47,6 +49,7 @@ describe('literal char arguments are not mode triggers', () => {
   });
 
   test('dF! uses "!" as the target', () => {
+    h.reset('ab!cd', 3);
     h.press('d');
     h.press('F');
     h.press('!');
@@ -56,6 +59,7 @@ describe('literal char arguments are not mode triggers', () => {
   });
 
   test('cT? uses "?" as the target instead of starting a backwards search', () => {
+    h.reset('ab?cd', 4);
     h.press('c');
     h.press('T');
     h.press('?');
@@ -66,6 +70,7 @@ describe('literal char arguments are not mode triggers', () => {
   });
 
   test('r: replaces the character with a colon instead of opening cmdline', () => {
+    h.reset('ab', 0);
     h.press('r');
     h.press(':');
     expect(h.overlay.showCmdLine).not.toHaveBeenCalled();
@@ -147,5 +152,38 @@ describe('end to end find and till', () => {
     h.press('/');
     expect(h.el.value).toBe('abcef');
     expect(h.engine.mode).toBe(h.Mode.INSERT);
+  });
+});
+
+// =========================================================================
+// A missing f/F/t/T target cancels the operator (no edit, no mode change)
+// =========================================================================
+describe('missing char target cancels the command', () => {
+  test('dt with a missing target leaves the buffer alone', () => {
+    h.reset('abc def', 0);
+    h.press('d'); h.press('t'); h.press('z');
+    expect(h.el.value).toBe('abc def');
+    expect(h.engine.mode).toBe(h.Mode.NORMAL);
+  });
+
+  test('cF with a missing target does not enter insert mode', () => {
+    h.reset('abc def', 3);
+    h.press('c'); h.press('F'); h.press('z');
+    expect(h.el.value).toBe('abc def');
+    expect(h.engine.mode).toBe(h.Mode.NORMAL);
+  });
+
+  test('an unsatisfiable count deletes nothing', () => {
+    // Vim: d2t, on "a,b c" (one comma) leaves the buffer untouched.
+    h.reset('a,b c', 0);
+    h.press('d'); h.press('2'); h.press('t'); h.press(',');
+    expect(h.el.value).toBe('a,b c');
+    expect(h.engine.mode).toBe(h.Mode.NORMAL);
+  });
+
+  test('a successful target still applies the operator', () => {
+    h.reset('abc def', 0);
+    h.press('d'); h.press('t'); h.press(' ');
+    expect(h.el.value).toBe(' def');
   });
 });

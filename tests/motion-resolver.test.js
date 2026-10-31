@@ -587,8 +587,32 @@ describe('char motions as operator arguments', () => {
       .toEqual({ from: 0, to: 2 });
   });
 
-  test('a missing target leaves an empty range', () => {
-    expect(MR.resolveMotion(TEXT, 0, MT.FIND_CHAR, 1, true, -1, 'z'))
-      .toEqual({ from: 0, to: 0 });
+  test('a missing target cancels the operator', () => {
+    // Vim 9.2: dtz on "abc def" leaves the buffer untouched.
+    expect(MR.resolveMotion(TEXT, 0, MT.FIND_CHAR, 1, true, -1, 'z')).toBeNull();
+  });
+});
+
+// =========================================================================
+// A failed char motion cancels the whole command (Vim 9.2 verified)
+// =========================================================================
+describe('failed char motions', () => {
+  test('an operator motion with a missing target returns null', () => {
+    expect(MR.resolveMotion('abc def', 0, MT.TILL_CHAR, 1, true, -1, 'z')).toBeNull();
+    expect(MR.resolveMotion('abc def', 3, MT.FIND_CHAR_BACK, 1, true, -1, 'z')).toBeNull();
+  });
+
+  test('a plain motion with a missing target does not move', () => {
+    expect(MR.resolveMotion('abc def', 2, MT.TILL_CHAR, 1, false, -1, 'z')).toBe(2);
+    expect(MR.resolveMotion('abc def', 2, MT.FIND_CHAR_BACK, 1, false, -1, 'z')).toBe(2);
+  });
+
+  test('an unsatisfiable count cancels instead of keeping the first match', () => {
+    // Vim: d2fz on "azb c" leaves the buffer untouched.
+    expect(MR.resolveMotion('azb c', 0, MT.FIND_CHAR, 2, true, -1, 'z')).toBeNull();
+    expect(MR.resolveMotion('azb c', 0, MT.TILL_CHAR, 2, true, -1, 'z')).toBeNull();
+    // ... and a plain 2fz/2tz must not move either.
+    expect(MR.resolveMotion('azb c', 0, MT.FIND_CHAR, 2, false, -1, 'z')).toBe(0);
+    expect(MR.resolveMotion('azb c', 0, MT.TILL_CHAR, 2, false, -1, 'z')).toBe(0);
   });
 });

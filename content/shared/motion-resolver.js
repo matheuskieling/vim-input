@@ -236,6 +236,9 @@
     var charProbe = pos;
     // Operator range produced by an f/F/t/T motion, already exclusive on `to`.
     var charRange = null;
+    // A count is all-or-nothing in Vim: if any iteration cannot find its
+    // character the whole command is cancelled, with no edit and no movement.
+    var charFailed = false;
 
     for (var i = 0; i < count; i++) {
       switch (motion) {
@@ -389,7 +392,7 @@
           var hit = isForward
             ? TU.findCharForward(text, charProbe, charArg)
             : TU.findCharBackward(text, charProbe, charArg);
-          if (hit === -1) break;
+          if (hit === -1) { charFailed = true; break; }
           charProbe = hit;
           if (forOperator) {
             // Vim rule, verified against Vim 9.2: a forward charwise motion is
@@ -460,6 +463,14 @@
         }
       }
     }
+
+    // FIX: a failed f/F/t/T cancels the whole command (Vim 9.2 verified: d2fz
+    // on "azb c" leaves the buffer untouched, and no plain 2fz movement).
+    // WHY: the loop used to keep the last successful match, so an unsatisfiable
+    //   count partially deleted text next to the cursor.
+    // WARNING: returning a range here re-breaks unsatisfiable counts; the
+    //   handlers treat null as "operator cancelled".
+    if (charFailed) return forOperator ? null : pos;
 
     if (forOperator) {
       // f/F/t/T already produced their exact range above.
