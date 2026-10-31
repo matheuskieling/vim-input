@@ -228,6 +228,22 @@
 
   // ── Motion resolver ───────────────────────────────────
 
+  /**
+   * Resolve a motion.
+   *
+   * Return value depends on `forOperator`:
+   *   - false: a number, the absolute offset the cursor moves to.
+   *   - true:  { from, to }, the operator range, exclusive on `to`.
+   *   - true and an f/F/t/T target is missing (including on any iteration of
+   *     the count): `null`, meaning "cancel the whole operator".
+   *
+   * Every `forOperator: true` caller must handle `null` (input-handler and
+   * contenteditable-handler `_doOperatorMotion` both do). Plain-motion callers
+   * never receive `null` — a failed plain motion returns `pos` unchanged.
+   *
+   * WHY: a caller that skips the null check turns a cancelled command into a
+   * TypeError on `range.from`. When adding a caller, follow this contract.
+   */
   function resolveMotion(text, pos, motion, count, forOperator, desiredCol, charArg, vLines) {
     var newPos = pos;
     var col = (desiredCol >= 0) ? desiredCol : -1;
