@@ -78,6 +78,7 @@
     ESCAPE: 'escape',
     REPLACE_CHAR: 'replace_char',
     DELETE_CHAR: 'delete_char',
+    DELETE_WORD_BACK: 'delete_word_back',
     VISUAL_SWAP: 'visual_swap',
     VISUAL_PASTE: 'visual_paste',
   });

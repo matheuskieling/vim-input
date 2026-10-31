@@ -393,6 +393,17 @@
     this._pendingTextObj = key;
   };
 
+  /**
+   * True while the parser is waiting for a literal character argument
+   * (f/F/t/T target, r replacement, or i/a text-object target).
+   *
+   * The next key must then be consumed verbatim: characters like "/", "?" and
+   * ":" are ordinary motion targets there, not mode triggers.
+   */
+  KeyParser.prototype.awaitsCharArgument = function () {
+    return !!(this._pendingFind || this._pendingR || this._pendingTextObj);
+  };
+
   KeyParser.prototype.getPending = function () {
     return this._keys;
   };

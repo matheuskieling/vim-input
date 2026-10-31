@@ -545,10 +545,10 @@
         this._doMotion(el, text, pos, command);
         break;
       case CommandType.OPERATOR_MOTION:
-        this._doOperatorMotion(el, text, pos, command);
+        this._doOperatorMotion(el, text, pos, command, engine);
         break;
       case CommandType.OPERATOR_TEXT_OBJECT:
-        this._doOperatorTextObject(el, text, pos, command);
+        this._doOperatorTextObject(el, text, pos, command, engine);
         break;
       case CommandType.LINE_OPERATOR:
         this._doLineOperator(el, text, pos, command);
@@ -585,6 +585,9 @@
         break;
       case CommandType.DELETE_CHAR:
         this._doDeleteChar(el, text, pos, command);
+        break;
+      case CommandType.DELETE_WORD_BACK:
+        this._doDeleteWordBack(el, text, pos, command);
         break;
       case CommandType.ESCAPE:
         this._doEscape(el, text, pos, command);
@@ -640,13 +643,25 @@
     setCursorAt(el, newPos);
   };
 
-  ContentEditableHandler.prototype._doOperatorMotion = function (el, text, pos, command) {
+  // FIX: a motion or text object that fails cancels the operator outright.
+  // WHY: Vim leaves the buffer, register and mode untouched. Our engine sets
+  //   INSERT for `c` before the range is known, so a cancelled change has to
+  //   hand the mode back.
+  // WARNING: without this, cF{missing} leaves the caret in INSERT mode.
+  ContentEditableHandler.prototype._cancelOperator = function (command, engine) {
+    if (command.operator === OperatorType.CHANGE && engine && engine.setMode) {
+      engine.setMode(window.InputVim.Mode.NORMAL);
+    }
+  };
+
+  ContentEditableHandler.prototype._doOperatorMotion = function (el, text, pos, command, engine) {
     var linewise = command.motion === MotionType.LINE_UP || command.motion === MotionType.LINE_DOWN;
     var needsVLines = linewise ||
       command.motion === MotionType.LINE_END ||
       command.motion === MotionType.FIRST_NON_BLANK;
     var vLines = needsVLines ? computeCEVisualLines(el, text) : null;
     var range = MR.resolveMotion(text, pos, command.motion, command.count, true, -1, command.char, vLines);
+    if (!range) { this._cancelOperator(command, engine); return; }
 
     if (linewise) {
       var startLine = TU.getLineInfo(text, range.from);
@@ -688,9 +703,9 @@
     TU.fireInputEvent(el);
   };
 
-  ContentEditableHandler.prototype._doOperatorTextObject = function (el, text, pos, command) {
+  ContentEditableHandler.prototype._doOperatorTextObject = function (el, text, pos, command, engine) {
     var range = MR.resolveTextObject(text, pos, command.object, command.modifier, command.char);
-    if (!range) return;
+    if (!range) { this._cancelOperator(command, engine); return; }
 
     var deleted = text.substring(range.from, range.to);
 
@@ -1298,6 +1313,28 @@
     var newInfo = TU.getLineInfo(newText, Math.min(pos, newText.length));
     var maxPos = newInfo.lineEnd > newInfo.lineStart ? newInfo.lineEnd - 1 : newInfo.lineStart;
     setCursorAt(el, Math.min(pos, maxPos));
+    TU.fireInputEvent(el);
+  };
+
+  // ── Insert-mode word delete (i_CTRL-W) ──────────────
+
+  // FIX: i_CTRL-W support for hosts that deliver Ctrl+W to the page
+  // (PWAs, Electron). Chrome itself reserves the shortcut and cannot be
+  // overridden, so the key never reaches us there.
+  // WHY: Vim users expect insert-mode word delete to work like in the editor.
+  // WARNING: Deliberately does NOT touch the register — Vim sends this text to
+  // the small-delete register, and writing it here would clobber a yank.
+  ContentEditableHandler.prototype._doDeleteWordBack = function (el, text, pos, command) {
+    var count = command.count || 1;
+    var start = pos;
+    for (var i = 0; i < count && start > 0; i++) {
+      start = TU.wordDeleteStart(text, start);
+    }
+    if (start === pos) return;
+
+    this._saveUndo(el);
+    deleteRange(el, start, pos);
+    setCursorAt(el, start);
     TU.fireInputEvent(el);
   };
 

@@ -459,3 +459,40 @@ describe('fireInputEvent', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 });
+
+// =========================================================================
+// wordDeleteStart — start offset of the word removed by i_CTRL-W
+// =========================================================================
+describe('wordDeleteStart', () => {
+  test('deletes the word before the cursor', () => {
+    expect(TU.wordDeleteStart('foo bar', 7)).toBe(4);
+  });
+
+  test('swallows the whitespace before the word', () => {
+    expect(TU.wordDeleteStart('foo bar', 4)).toBe(0);
+  });
+
+  test('leaves leading indentation behind', () => {
+    expect(TU.wordDeleteStart('  foo', 5)).toBe(2);
+  });
+
+  test('treats punctuation as part of the word', () => {
+    expect(TU.wordDeleteStart('foo.bar', 7)).toBe(0);
+  });
+
+  test('deletes a run of trailing whitespace', () => {
+    expect(TU.wordDeleteStart('foo   ', 6)).toBe(0);
+  });
+
+  test('is a no-op at the start of the buffer', () => {
+    expect(TU.wordDeleteStart('foo', 0)).toBe(0);
+  });
+
+  test('does not eat the newline of a non-empty line', () => {
+    expect(TU.wordDeleteStart('ab\ncd', 5)).toBe(3);
+  });
+
+  test('joins lines when the cursor is at the start of a line', () => {
+    expect(TU.wordDeleteStart('ab\ncd', 3)).toBe(2);
+  });
+});

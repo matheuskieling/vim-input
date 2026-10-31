@@ -503,3 +503,116 @@ describe('search motions', () => {
     expect(pos).toBe(2);
   });
 });
+
+// =========================================================================
+// f/F/t/T as operator arguments — the operator range is exclusive on `to`,
+// so the motion must convert Vim's inclusive cursor semantics into that range.
+// =========================================================================
+describe('char motions as operator arguments', () => {
+  // 'hello world': h0 e1 l2 l3 o4 ' '5 w6 o7 r8 l9 d10
+  const TEXT = 'hello world';
+
+  test('df<char> includes the character it finds', () => {
+    expect(MR.resolveMotion(TEXT, 0, MT.FIND_CHAR, 1, true, -1, 'l'))
+      .toEqual({ from: 0, to: 3 });
+  });
+
+  test('dt<char> stops just before the character it finds', () => {
+    expect(MR.resolveMotion(TEXT, 0, MT.TILL_CHAR, 1, true, -1, 'l'))
+      .toEqual({ from: 0, to: 2 });
+  });
+
+  test('dF<char> keeps the character under the cursor', () => {
+    // Vim 9.2, "x!y!z" cursor on z: dF! gives "x!yz" => delete [3,4), the
+    // SECOND "!" (index 3). The cursor character z is not part of a backward
+    // charwise range, so the range ends at pos, not pos+1.
+    expect(MR.resolveMotion('x!y!z', 4, MT.FIND_CHAR_BACK, 1, true, -1, '!'))
+      .toEqual({ from: 3, to: 4 });
+  });
+
+  test('dT<char> starts just after the found character and keeps the cursor one', () => {
+    // Vim 9.2, "x!y!z" cursor on z: dT! does not move, so the range is empty.
+    expect(MR.resolveMotion('x!y!z', 4, MT.TILL_CHAR_BACK, 1, true, -1, '!'))
+      .toEqual({ from: 4, to: 4 });
+    // "hello world" cursor on 'o' at 7, previous 'l' at 3: dT deletes "o w".
+    expect(MR.resolveMotion('hello world', 7, MT.TILL_CHAR_BACK, 1, true, -1, 'l'))
+      .toEqual({ from: 4, to: 7 });
+  });
+
+  test('d2F<char> reaches the second previous occurrence', () => {
+    // Vim 9.2, "x!y!z" cursor on z: d2F! gives "xz" => [1,4)
+    expect(MR.resolveMotion('x!y!z', 4, MT.FIND_CHAR_BACK, 2, true, -1, '!'))
+      .toEqual({ from: 1, to: 4 });
+  });
+
+  test('d2T<char> stops after the second previous occurrence', () => {
+    // Vim 9.2, "x!y!z" cursor on z: d2T! gives "x!z" => [2,4)
+    expect(MR.resolveMotion('x!y!z', 4, MT.TILL_CHAR_BACK, 2, true, -1, '!'))
+      .toEqual({ from: 2, to: 4 });
+  });
+
+  test('d2f<char> reaches the second occurrence', () => {
+    // Vim 9.2, "x!y!z" cursor on x: d2f! gives "z" => [0,4)
+    expect(MR.resolveMotion('x!y!z', 0, MT.FIND_CHAR, 2, true, -1, '!'))
+      .toEqual({ from: 0, to: 4 });
+  });
+
+  test('d2t<char> stops before the second occurrence', () => {
+    // Vim 9.2, "x!y!z" cursor on x: d2t! gives "!z" => [0,3)
+    expect(MR.resolveMotion('x!y!z', 0, MT.TILL_CHAR, 2, true, -1, '!'))
+      .toEqual({ from: 0, to: 3 });
+  });
+
+  test('2t<char> moves the cursor before the second occurrence', () => {
+    expect(MR.resolveMotion(TEXT, 0, MT.TILL_CHAR, 2, false, -1, 'l')).toBe(2);
+  });
+
+  test('2f<char> moves the cursor onto the second occurrence', () => {
+    expect(MR.resolveMotion(TEXT, 0, MT.FIND_CHAR, 2, false, -1, 'l')).toBe(3);
+  });
+
+  test('df! treats punctuation as an ordinary target', () => {
+    expect(MR.resolveMotion('a!b', 0, MT.FIND_CHAR, 1, true, -1, '!'))
+      .toEqual({ from: 0, to: 2 });
+  });
+
+  test('dF! treats punctuation as an ordinary target', () => {
+    // Vim 9.2, "a!b" cursor on b: dF! gives "ab" => [1,2)
+    expect(MR.resolveMotion('a!b', 2, MT.FIND_CHAR_BACK, 1, true, -1, '!'))
+      .toEqual({ from: 1, to: 2 });
+  });
+
+  test('df/ treats a slash as an ordinary target', () => {
+    expect(MR.resolveMotion('a/b/c', 0, MT.FIND_CHAR, 1, true, -1, '/'))
+      .toEqual({ from: 0, to: 2 });
+  });
+
+  test('a missing target cancels the operator', () => {
+    // Vim 9.2: dtz on "abc def" leaves the buffer untouched.
+    expect(MR.resolveMotion(TEXT, 0, MT.FIND_CHAR, 1, true, -1, 'z')).toBeNull();
+  });
+});
+
+// =========================================================================
+// A failed char motion cancels the whole command (Vim 9.2 verified)
+// =========================================================================
+describe('failed char motions', () => {
+  test('an operator motion with a missing target returns null', () => {
+    expect(MR.resolveMotion('abc def', 0, MT.TILL_CHAR, 1, true, -1, 'z')).toBeNull();
+    expect(MR.resolveMotion('abc def', 3, MT.FIND_CHAR_BACK, 1, true, -1, 'z')).toBeNull();
+  });
+
+  test('a plain motion with a missing target does not move', () => {
+    expect(MR.resolveMotion('abc def', 2, MT.TILL_CHAR, 1, false, -1, 'z')).toBe(2);
+    expect(MR.resolveMotion('abc def', 2, MT.FIND_CHAR_BACK, 1, false, -1, 'z')).toBe(2);
+  });
+
+  test('an unsatisfiable count cancels instead of keeping the first match', () => {
+    // Vim: d2fz on "azb c" leaves the buffer untouched.
+    expect(MR.resolveMotion('azb c', 0, MT.FIND_CHAR, 2, true, -1, 'z')).toBeNull();
+    expect(MR.resolveMotion('azb c', 0, MT.TILL_CHAR, 2, true, -1, 'z')).toBeNull();
+    // ... and a plain 2fz/2tz must not move either.
+    expect(MR.resolveMotion('azb c', 0, MT.FIND_CHAR, 2, false, -1, 'z')).toBe(0);
+    expect(MR.resolveMotion('azb c', 0, MT.TILL_CHAR, 2, false, -1, 'z')).toBe(0);
+  });
+});

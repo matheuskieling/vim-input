@@ -517,3 +517,37 @@ describe('selectTextObject (visual mode)', () => {
     expect(el.selectionEnd).toBe(5);
   });
 });
+
+// =========================================================================
+// Insert-mode word delete (i_CTRL-W)
+// =========================================================================
+describe('delete word backward', () => {
+  test('deletes the word before the cursor', () => {
+    el = makeInput('foo bar', 7);
+    handler.execute(el, { type: CT.DELETE_WORD_BACK, count: 1 }, engine);
+    expect(el.value).toBe('foo ');
+    expect(el.selectionStart).toBe(4);
+  });
+
+  test('count deletes several words', () => {
+    el = makeInput('one two three', 13);
+    handler.execute(el, { type: CT.DELETE_WORD_BACK, count: 2 }, engine);
+    expect(el.value).toBe('one ');
+    expect(el.selectionStart).toBe(4);
+  });
+
+  test('is a no-op at the start of the buffer', () => {
+    el = makeInput('foo', 0);
+    handler.execute(el, { type: CT.DELETE_WORD_BACK, count: 1 }, engine);
+    expect(el.value).toBe('foo');
+    expect(el.selectionStart).toBe(0);
+  });
+
+  test('fires an input event', () => {
+    el = makeInput('foo bar', 7);
+    const onInput = jest.fn();
+    el.addEventListener('input', onInput);
+    handler.execute(el, { type: CT.DELETE_WORD_BACK, count: 1 }, engine);
+    expect(onInput).toHaveBeenCalledTimes(1);
+  });
+});

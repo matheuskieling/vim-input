@@ -658,6 +658,20 @@
       return;
     }
 
+    // Ctrl+W in insert mode deletes the word before the cursor (i_CTRL-W).
+    // WHY: Chrome reserves Ctrl+W for closing the tab and preventDefault()
+    //   cannot override it there, but PWAs and Electron hosts do deliver the
+    //   key to the page, where Vim users expect insert-mode word delete.
+    // WARNING: Only intercept in insert mode — normal mode Ctrl+W belongs to
+    //   the host window, not to the editor.
+    if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey &&
+        (e.key === 'w' || e.key === 'W') && _engine.mode === Mode.INSERT) {
+      _blocked = true;
+      killEvent(e);
+      handler.execute(el, { type: CommandType.DELETE_WORD_BACK, count: 1 }, _engine);
+      return;
+    }
+
     // Ignore modifier combos
     if (e.ctrlKey || e.metaKey || e.altKey) {
       _markFocusSteal();
@@ -772,8 +786,17 @@
       if (key !== 'Escape') return;
     }
 
+    // FIX: A pending literal character argument (f/F/t/T target, r replacement,
+    // or i/a text-object target) consumes the next key verbatim.
+    // WHY: "/", "?" and ":" were hijacked as mode triggers even in the middle of
+    //   a command, so cF/ started a search and silently dropped the operator
+    //   instead of treating "/" as the character to find.
+    // WARNING: Removing this guard re-breaks every f/F/t/T motion whose target
+    //   is also a mode-trigger character (: / ?).
+    var pendingCharArg = _engine.parser.awaitsCharArgument();
+
     // ':' activates command-line mode
-    if (key === ':') {
+    if (!pendingCharArg && key === ':') {
       _blocked = true;
       killEvent(e);
       _cmdLineActive = true;
@@ -783,7 +806,7 @@
     }
 
     // '/' and '?' activate search mode (clears pending command first)
-    if (key === '/' || key === '?') {
+    if (!pendingCharArg && (key === '/' || key === '?')) {
       _blocked = true;
       killEvent(e);
       _engine.parser.reset();

@@ -228,9 +228,33 @@
 
   // ── Motion resolver ───────────────────────────────────
 
+  /**
+   * Resolve a motion.
+   *
+   * Return value depends on `forOperator`:
+   *   - false: a number, the absolute offset the cursor moves to.
+   *   - true:  { from, to }, the operator range, exclusive on `to`.
+   *   - true and an f/F/t/T target is missing (including on any iteration of
+   *     the count): `null`, meaning "cancel the whole operator".
+   *
+   * Every `forOperator: true` caller must handle `null` (input-handler and
+   * contenteditable-handler `_doOperatorMotion` both do). Plain-motion callers
+   * never receive `null` — a failed plain motion returns `pos` unchanged.
+   *
+   * WHY: a caller that skips the null check turns a cancelled command into a
+   * TypeError on `range.from`. When adding a caller, follow this contract.
+   */
   function resolveMotion(text, pos, motion, count, forOperator, desiredCol, charArg, vLines) {
     var newPos = pos;
     var col = (desiredCol >= 0) ? desiredCol : -1;
+    // Scan origin for repeated f/F/t/T: it must advance past the character we
+    // just matched, not sit on the cursor (t stops one short of its target).
+    var charProbe = pos;
+    // Operator range produced by an f/F/t/T motion, already exclusive on `to`.
+    var charRange = null;
+    // A count is all-or-nothing in Vim: if any iteration cannot find its
+    // character the whole command is cancelled, with no edit and no movement.
+    var charFailed = false;
 
     for (var i = 0; i < count; i++) {
       switch (motion) {
@@ -367,24 +391,38 @@
           }
           break;
         }
-        case MotionType.FIND_CHAR: {
-          var fc = TU.findCharForward(text, newPos, charArg);
-          if (fc !== -1) newPos = fc;
-          break;
-        }
-        case MotionType.FIND_CHAR_BACK: {
-          var fcb = TU.findCharBackward(text, newPos, charArg);
-          if (fcb !== -1) newPos = fcb;
-          break;
-        }
-        case MotionType.TILL_CHAR: {
-          var tc = TU.findCharForward(text, newPos, charArg);
-          if (tc !== -1) newPos = tc - 1;
-          break;
-        }
+        // FIX: f/F/t/T must build the operator range from Vim's inclusive
+        // cursor semantics instead of reusing the cursor position.
+        // WHY: The operator range is exclusive on `to`, so df{char} stopped one
+        //   character short, dt{char} two short, dF/dT dropped the character
+        //   under the cursor, and a count re-found the same character
+        //   (2t{char} did not move at all).
+        // WARNING: Returning a cursor position here instead of `charRange`
+        //   re-breaks every d/c/y f/t motion and their counts.
+        case MotionType.FIND_CHAR:
+        case MotionType.FIND_CHAR_BACK:
+        case MotionType.TILL_CHAR:
         case MotionType.TILL_CHAR_BACK: {
-          var tcb = TU.findCharBackward(text, newPos, charArg);
-          if (tcb !== -1) newPos = tcb + 1;
+          var isForward = motion === MotionType.FIND_CHAR || motion === MotionType.TILL_CHAR;
+          var isTill = motion === MotionType.TILL_CHAR || motion === MotionType.TILL_CHAR_BACK;
+          var hit = isForward
+            ? TU.findCharForward(text, charProbe, charArg)
+            : TU.findCharBackward(text, charProbe, charArg);
+          if (hit === -1) { charFailed = true; break; }
+          charProbe = hit;
+          if (forOperator) {
+            // Vim rule, verified against Vim 9.2: a forward charwise motion is
+            // exclusive at `to` but includes the character it finds (f) or
+            // stops before it (t); a BACKWARD motion never includes the
+            // character under the cursor, so `to` stays at `pos`.
+            charRange = isForward
+              ? { from: pos, to: isTill ? hit : hit + 1 }
+              : { from: isTill ? hit + 1 : hit, to: pos };
+          } else {
+            newPos = isForward
+              ? (isTill ? hit - 1 : hit)
+              : (isTill ? hit + 1 : hit);
+          }
           break;
         }
         case MotionType.DOC_START:
@@ -442,7 +480,17 @@
       }
     }
 
+    // FIX: a failed f/F/t/T cancels the whole command (Vim 9.2 verified: d2fz
+    // on "azb c" leaves the buffer untouched, and no plain 2fz movement).
+    // WHY: the loop used to keep the last successful match, so an unsatisfiable
+    //   count partially deleted text next to the cursor.
+    // WARNING: returning a range here re-breaks unsatisfiable counts; the
+    //   handlers treat null as "operator cancelled".
+    if (charFailed) return forOperator ? null : pos;
+
     if (forOperator) {
+      // f/F/t/T already produced their exact range above.
+      if (charRange) return charRange;
       // FIX: Vim's exclusive-linewise adjustment for w/W motions.
       // WHY: dw on the last word of a line was deleting across line boundaries
       // (e.g. "notes\n    \n" instead of just "notes"), because wordForward

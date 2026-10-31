@@ -654,3 +654,92 @@ describe('unrecognized keys', () => {
     expect(next.count).toBe(1);
   });
 });
+
+// =========================================================================
+// Literal character arguments
+// =========================================================================
+describe('literal character arguments', () => {
+  test('f accepts "/" as its target', () => {
+    parser.feed('f');
+    const cmd = parser.feed('/');
+    expect(cmd).toMatchObject({ type: CT.MOTION, motion: MT.FIND_CHAR, char: '/' });
+  });
+
+  test('dF accepts "!" as its target', () => {
+    parser.feed('d');
+    parser.feed('F');
+    const cmd = parser.feed('!');
+    expect(cmd).toMatchObject({
+      type: CT.OPERATOR_MOTION, operator: OT.DELETE, motion: MT.FIND_CHAR_BACK, char: '!',
+    });
+  });
+
+  test('cT accepts "?" as its target', () => {
+    parser.feed('c');
+    parser.feed('T');
+    const cmd = parser.feed('?');
+    expect(cmd).toMatchObject({
+      type: CT.OPERATOR_MOTION, operator: OT.CHANGE, motion: MT.TILL_CHAR_BACK, char: '?',
+    });
+  });
+
+  test('r accepts ":" as its replacement', () => {
+    parser.feed('r');
+    const cmd = parser.feed(':');
+    expect(cmd).toMatchObject({ type: CT.REPLACE_CHAR, char: ':' });
+  });
+
+  test('ci/ still resolves to a char-pair text object', () => {
+    parser.feed('c');
+    parser.feed('i');
+    const cmd = parser.feed('/');
+    expect(cmd).toMatchObject({ type: CT.OPERATOR_TEXT_OBJECT, object: TO.CHAR_PAIR, char: '/' });
+  });
+});
+
+describe('awaitsCharArgument', () => {
+  test('is false in an idle normal mode', () => {
+    expect(parser.awaitsCharArgument()).toBe(false);
+  });
+
+  test('is true while waiting for an f/F/t/T target', () => {
+    parser.feed('f');
+    expect(parser.awaitsCharArgument()).toBe(true);
+    parser.feed('/');
+    expect(parser.awaitsCharArgument()).toBe(false);
+  });
+
+  test('is true while waiting for an r replacement', () => {
+    parser.feed('r');
+    expect(parser.awaitsCharArgument()).toBe(true);
+  });
+
+  test('is true while waiting for a text-object modifier target', () => {
+    parser.feed('d');
+    parser.feed('i');
+    expect(parser.awaitsCharArgument()).toBe(true);
+  });
+
+  test('is true while waiting for a visual-mode text-object target', () => {
+    parser.setPendingTextObj('a');
+    expect(parser.awaitsCharArgument()).toBe(true);
+  });
+
+  test('is true while waiting for a char after a count and operator', () => {
+    parser.feed('d');
+    parser.feed('2');
+    parser.feed('t');
+    expect(parser.awaitsCharArgument()).toBe(true);
+  });
+
+  test('is false after Escape clears the pending argument', () => {
+    parser.feed('f');
+    parser.feed('Escape');
+    expect(parser.awaitsCharArgument()).toBe(false);
+  });
+
+  test('is false while only an operator is pending', () => {
+    parser.feed('d');
+    expect(parser.awaitsCharArgument()).toBe(false);
+  });
+});
