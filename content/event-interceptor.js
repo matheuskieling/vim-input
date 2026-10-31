@@ -772,8 +772,17 @@
       if (key !== 'Escape') return;
     }
 
+    // FIX: A pending literal character argument (f/F/t/T target, r replacement,
+    // or i/a text-object target) consumes the next key verbatim.
+    // WHY: "/", "?" and ":" were hijacked as mode triggers even in the middle of
+    //   a command, so cF/ started a search and silently dropped the operator
+    //   instead of treating "/" as the character to find.
+    // WARNING: Removing this guard re-breaks every f/F/t/T motion whose target
+    //   is also a mode-trigger character (: / ?).
+    var pendingCharArg = _engine.parser.awaitsCharArgument();
+
     // ':' activates command-line mode
-    if (key === ':') {
+    if (!pendingCharArg && key === ':') {
       _blocked = true;
       killEvent(e);
       _cmdLineActive = true;
@@ -783,7 +792,7 @@
     }
 
     // '/' and '?' activate search mode (clears pending command first)
-    if (key === '/' || key === '?') {
+    if (!pendingCharArg && (key === '/' || key === '?')) {
       _blocked = true;
       killEvent(e);
       _engine.parser.reset();

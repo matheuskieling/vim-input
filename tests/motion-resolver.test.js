@@ -503,3 +503,72 @@ describe('search motions', () => {
     expect(pos).toBe(2);
   });
 });
+
+// =========================================================================
+// f/F/t/T as operator arguments — the operator range is exclusive on `to`,
+// so the motion must convert Vim's inclusive cursor semantics into that range.
+// =========================================================================
+describe('char motions as operator arguments', () => {
+  // 'hello world': h0 e1 l2 l3 o4 ' '5 w6 o7 r8 l9 d10
+  const TEXT = 'hello world';
+
+  test('df<char> includes the character it finds', () => {
+    expect(MR.resolveMotion(TEXT, 0, MT.FIND_CHAR, 1, true, -1, 'l'))
+      .toEqual({ from: 0, to: 3 });
+  });
+
+  test('dt<char> stops just before the character it finds', () => {
+    expect(MR.resolveMotion(TEXT, 0, MT.TILL_CHAR, 1, true, -1, 'l'))
+      .toEqual({ from: 0, to: 2 });
+  });
+
+  test('dF<char> includes the character under the cursor', () => {
+    // cursor on 'o' at 4, previous 'l' at 3 — the 'o' must be deleted too
+    expect(MR.resolveMotion(TEXT, 4, MT.FIND_CHAR_BACK, 1, true, -1, 'l'))
+      .toEqual({ from: 3, to: 5 });
+  });
+
+  test('dT<char> starts just after the character it finds', () => {
+    // cursor on 'o' at 4, previous 'l' at 3 — only the 'o' is deleted
+    expect(MR.resolveMotion(TEXT, 4, MT.TILL_CHAR_BACK, 1, true, -1, 'l'))
+      .toEqual({ from: 4, to: 5 });
+  });
+
+  test('d2f<char> reaches the second occurrence', () => {
+    expect(MR.resolveMotion(TEXT, 0, MT.FIND_CHAR, 2, true, -1, 'l'))
+      .toEqual({ from: 0, to: 4 });
+  });
+
+  test('d2t<char> stops before the second occurrence', () => {
+    expect(MR.resolveMotion(TEXT, 0, MT.TILL_CHAR, 2, true, -1, 'l'))
+      .toEqual({ from: 0, to: 3 });
+  });
+
+  test('2t<char> moves the cursor before the second occurrence', () => {
+    expect(MR.resolveMotion(TEXT, 0, MT.TILL_CHAR, 2, false, -1, 'l')).toBe(2);
+  });
+
+  test('2f<char> moves the cursor onto the second occurrence', () => {
+    expect(MR.resolveMotion(TEXT, 0, MT.FIND_CHAR, 2, false, -1, 'l')).toBe(3);
+  });
+
+  test('df! treats punctuation as an ordinary target', () => {
+    expect(MR.resolveMotion('a!b', 0, MT.FIND_CHAR, 1, true, -1, '!'))
+      .toEqual({ from: 0, to: 2 });
+  });
+
+  test('dF! treats punctuation as an ordinary target', () => {
+    expect(MR.resolveMotion('a!b', 2, MT.FIND_CHAR_BACK, 1, true, -1, '!'))
+      .toEqual({ from: 1, to: 3 });
+  });
+
+  test('df/ treats a slash as an ordinary target', () => {
+    expect(MR.resolveMotion('a/b/c', 0, MT.FIND_CHAR, 1, true, -1, '/'))
+      .toEqual({ from: 0, to: 2 });
+  });
+
+  test('a missing target leaves an empty range', () => {
+    expect(MR.resolveMotion(TEXT, 0, MT.FIND_CHAR, 1, true, -1, 'z'))
+      .toEqual({ from: 0, to: 0 });
+  });
+});

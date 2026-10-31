@@ -23,6 +23,7 @@ const SCRIPT_ORDER = [
   'handlers/contenteditable-handler.js',
   'settings-manager.js',
   'element-detector.js',
+  'event-interceptor.js',
 ];
 
 const STOP_AFTER = {
@@ -36,6 +37,7 @@ const STOP_AFTER = {
   'contenteditable-handler': 'handlers/contenteditable-handler.js',
   'settings-manager': 'settings-manager.js',
   'element-detector': 'element-detector.js',
+  'event-interceptor': 'event-interceptor.js',
 };
 
 function polyfillJsdom() {
