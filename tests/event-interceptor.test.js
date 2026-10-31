@@ -131,12 +131,13 @@ describe('end to end find and till', () => {
     expect(h.el.value).toBe('def');
   });
 
-  test('dF/ deletes back through a slash and the cursor character', () => {
+  test('dF/ deletes back to a slash but keeps the cursor character', () => {
+    // Vim 9.2: "abc/def" with the cursor on 'e' gives "abcef".
     h.reset('abc/def', 5);
     h.press('d');
     h.press('F');
     h.press('/');
-    expect(h.el.value).toBe('abcf');
+    expect(h.el.value).toBe('abcef');
   });
 
   test('cF/ changes text and enters insert mode', () => {
@@ -144,7 +145,7 @@ describe('end to end find and till', () => {
     h.press('c');
     h.press('F');
     h.press('/');
-    expect(h.el.value).toBe('abcf');
+    expect(h.el.value).toBe('abcef');
     expect(h.engine.mode).toBe(h.Mode.INSERT);
   });
 });

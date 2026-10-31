@@ -522,25 +522,44 @@ describe('char motions as operator arguments', () => {
       .toEqual({ from: 0, to: 2 });
   });
 
-  test('dF<char> includes the character under the cursor', () => {
-    // cursor on 'o' at 4, previous 'l' at 3 — the 'o' must be deleted too
-    expect(MR.resolveMotion(TEXT, 4, MT.FIND_CHAR_BACK, 1, true, -1, 'l'))
-      .toEqual({ from: 3, to: 5 });
+  test('dF<char> keeps the character under the cursor', () => {
+    // Vim 9.2, "x!y!z" cursor on z: dF! gives "x!yz" => delete [3,4), the
+    // SECOND "!" (index 3). The cursor character z is not part of a backward
+    // charwise range, so the range ends at pos, not pos+1.
+    expect(MR.resolveMotion('x!y!z', 4, MT.FIND_CHAR_BACK, 1, true, -1, '!'))
+      .toEqual({ from: 3, to: 4 });
   });
 
-  test('dT<char> starts just after the character it finds', () => {
-    // cursor on 'o' at 4, previous 'l' at 3 — only the 'o' is deleted
-    expect(MR.resolveMotion(TEXT, 4, MT.TILL_CHAR_BACK, 1, true, -1, 'l'))
-      .toEqual({ from: 4, to: 5 });
+  test('dT<char> starts just after the found character and keeps the cursor one', () => {
+    // Vim 9.2, "x!y!z" cursor on z: dT! does not move, so the range is empty.
+    expect(MR.resolveMotion('x!y!z', 4, MT.TILL_CHAR_BACK, 1, true, -1, '!'))
+      .toEqual({ from: 4, to: 4 });
+    // "hello world" cursor on 'o' at 7, previous 'l' at 3: dT deletes "o w".
+    expect(MR.resolveMotion('hello world', 7, MT.TILL_CHAR_BACK, 1, true, -1, 'l'))
+      .toEqual({ from: 4, to: 7 });
+  });
+
+  test('d2F<char> reaches the second previous occurrence', () => {
+    // Vim 9.2, "x!y!z" cursor on z: d2F! gives "xz" => [1,4)
+    expect(MR.resolveMotion('x!y!z', 4, MT.FIND_CHAR_BACK, 2, true, -1, '!'))
+      .toEqual({ from: 1, to: 4 });
+  });
+
+  test('d2T<char> stops after the second previous occurrence', () => {
+    // Vim 9.2, "x!y!z" cursor on z: d2T! gives "x!z" => [2,4)
+    expect(MR.resolveMotion('x!y!z', 4, MT.TILL_CHAR_BACK, 2, true, -1, '!'))
+      .toEqual({ from: 2, to: 4 });
   });
 
   test('d2f<char> reaches the second occurrence', () => {
-    expect(MR.resolveMotion(TEXT, 0, MT.FIND_CHAR, 2, true, -1, 'l'))
+    // Vim 9.2, "x!y!z" cursor on x: d2f! gives "z" => [0,4)
+    expect(MR.resolveMotion('x!y!z', 0, MT.FIND_CHAR, 2, true, -1, '!'))
       .toEqual({ from: 0, to: 4 });
   });
 
   test('d2t<char> stops before the second occurrence', () => {
-    expect(MR.resolveMotion(TEXT, 0, MT.TILL_CHAR, 2, true, -1, 'l'))
+    // Vim 9.2, "x!y!z" cursor on x: d2t! gives "!z" => [0,3)
+    expect(MR.resolveMotion('x!y!z', 0, MT.TILL_CHAR, 2, true, -1, '!'))
       .toEqual({ from: 0, to: 3 });
   });
 
@@ -558,8 +577,9 @@ describe('char motions as operator arguments', () => {
   });
 
   test('dF! treats punctuation as an ordinary target', () => {
+    // Vim 9.2, "a!b" cursor on b: dF! gives "ab" => [1,2)
     expect(MR.resolveMotion('a!b', 2, MT.FIND_CHAR_BACK, 1, true, -1, '!'))
-      .toEqual({ from: 1, to: 3 });
+      .toEqual({ from: 1, to: 2 });
   });
 
   test('df/ treats a slash as an ordinary target', () => {

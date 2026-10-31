@@ -392,9 +392,13 @@
           if (hit === -1) break;
           charProbe = hit;
           if (forOperator) {
+            // Vim rule, verified against Vim 9.2: a forward charwise motion is
+            // exclusive at `to` but includes the character it finds (f) or
+            // stops before it (t); a BACKWARD motion never includes the
+            // character under the cursor, so `to` stays at `pos`.
             charRange = isForward
               ? { from: pos, to: isTill ? hit : hit + 1 }
-              : { from: isTill ? hit + 1 : hit, to: Math.min(pos + 1, text.length) };
+              : { from: isTill ? hit + 1 : hit, to: pos };
           } else {
             newPos = isForward
               ? (isTill ? hit - 1 : hit)
